@@ -17,12 +17,13 @@ header p,
 }
 
 .panel {
+  width: 800px;
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
-  display: grid;
-  gap: 12px;
+  display: block;
+
 }
 
 .panel h2 {
@@ -78,6 +79,47 @@ pre {
 .steps li {
   display: grid;
   gap: 6px;
+}
+
+.report {
+  display: grid;
+  gap: 8px;
+}
+
+.report h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.report ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.report a {
+  color: var(--accent);
+}
+
+.result {
+  display: grid;
+  gap: 12px;
+  line-height: 1.7;
+}
+
+.advice {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.advice strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.advice p {
+  margin: 0;
 }
 
 code {

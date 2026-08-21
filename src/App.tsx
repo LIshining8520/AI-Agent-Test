@@ -3,10 +3,9 @@ import { triageGraph } from "./graph/workflow";
 import "./App.css";
 
 function App() {
-  const [input, setInput] = useState("页面一打开就报 Internal Server Error，完全用不了");
+  const [input, setInput] = useState("今天天气怎么样");
   const [running, setRunning] = useState(false);
   const [finalState, setFinalState] = useState<any>(null);
-
   const run = useCallback(async () => {
     if (!input.trim() || running) return;
     setRunning(true);
@@ -33,22 +32,28 @@ console.log(finalState,'finalState>');
           value={input}
           onChange={(event) => setInput(event.target.value)}
           rows={3}
-          placeholder="例如：App 每次启动都会崩溃"
+          placeholder="例如：今天天气怎么样；不输入城市时自动使用你的定位"
           disabled={running}
           className="input-area"
         />
         <button type="button" onClick={run} disabled={running || !input.trim()}>
-          {running ? "运行中…" : "运行工作流"}
+          {running ? "运行中…" : "查询天气"}
         </button>
       </section>
 
 
       <section className="panel">
-        <h2>让菲菲来告诉你</h2>
+        <h2>亲爱的主人</h2>
         {finalState ? (
-          <pre>
-         亲爱的主人： {finalState.date}的天气是{finalState.weather}
-          </pre>
+          <div className="result">
+            {finalState.weather}
+            {finalState.advice ? (
+              <div className="advice">
+                <strong>出行建议</strong>
+                <p>{finalState.advice}</p>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <p className="hint">等待运行结果…</p>
         )}

@@ -7,12 +7,14 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seed:qdrant": "tsx --env-file=.env src/graph/qdrant-seed.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.8",
     "@langchain/langgraph": "^1.4.10",
     "@langchain/openai": "^1.5.8",
+    "@qdrant/js-client-rest": "^1.19.0",
     "cheerio": "^1.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -24,6 +26,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "tsx": "^4.23.12",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

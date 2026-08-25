@@ -3,10 +3,18 @@ import type { BaseMessage } from "@langchain/core/messages";
 
 // 浏览器环境没有 process.env，Vite 会把 .env 中 VITE_ 开头的变量注入 import.meta.env。
 // 注意：VITE_ 变量会打进前端产物，仅供本地/内部开发使用，部署到公网请走后端代理。
-const deepseekApiKey = import.meta.env.VITE_DEEPSEEK_API_KEY as string | undefined;
+function readEnv(key: string): string | undefined {
+  const metaEnv = (import.meta as any).env;
+  const fromMeta = metaEnv?.[key];
+  if (fromMeta != null) return fromMeta;
+  if (typeof process !== "undefined") return process.env[key];
+  return undefined;
+}
+
+const deepseekApiKey = readEnv("VITE_DEEPSEEK_API_KEY");
 const deepseekBaseURL =
-  import.meta.env.VITE_DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
-const deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || "deepseek-v4-flash";
+  readEnv("VITE_DEEPSEEK_BASE_URL") || "https://api.deepseek.com/v1";
+const deepseekModel = readEnv("VITE_DEEPSEEK_MODEL") || "deepseek-v4-flash";
 
 function toText(input: string | BaseMessage[]): string {
   if (Array.isArray(input)) {

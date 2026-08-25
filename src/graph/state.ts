@@ -1,5 +1,6 @@
 import { BaseMessage } from "@langchain/core/messages";
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
+import type { RetrievedChunk, RerankedChunk, AnswerCitation } from "../entities.js";
 
 export interface Citation {
   url: string;
@@ -58,3 +59,37 @@ export const ResearcherStateAnnotation = Annotation.Root({
 });
 
 export type ResearcherState = typeof ResearcherStateAnnotation.State;
+
+// RAG 知识库问答（lesson6）专用状态，与 researcher 状态分开定义
+export const StateAnnotation = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (left, right) => left.concat(right),
+    default: () => [],
+  }),
+  tenantId: Annotation<string>({
+    reducer: (left, right) => right ?? left,
+    default: () => "",
+  }),
+  query: Annotation<string>({
+    reducer: (left, right) => right ?? left,
+    default: () => "",
+  }),
+  retrievedDocs: Annotation<RetrievedChunk[]>({
+    reducer: (left, right) => right ?? left,
+    default: () => [],
+  }),
+  rerankedDocs: Annotation<RerankedChunk[]>({
+    reducer: (left, right) => right ?? left,
+    default: () => [],
+  }),
+  finalAnswer: Annotation<string>({
+    reducer: (left, right) => right ?? left,
+    default: () => "",
+  }),
+  citations: Annotation<AnswerCitation[]>({
+    reducer: (left, right) => right ?? left,
+    default: () => [],
+  }),
+});
+
+export type State = typeof StateAnnotation.State;

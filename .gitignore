@@ -13,6 +13,9 @@ dist-ssr
 .env
 *.local
 
+# WorkBuddy workspace-local data (memory, hooks, etc.)
+.workbuddy/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

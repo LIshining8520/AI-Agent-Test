@@ -119,17 +119,102 @@ function localDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// fetch 统一加超时：避免网络抖动/挂起时出现裸的 "TypeError: Failed to fetch"
+async function fetchWithTimeout(url: string, ms = 8000, init?: RequestInit) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 常用城市本地坐标表：中国直辖市/省会/主要城市。
+// 命中后无需请求外部地理编码服务，网络不稳时也能继续出天气。
+const CITY_COORDS: { name: string; admin1: string; lat: number; lon: number }[] = [
+  { name: "北京", admin1: "北京市", lat: 39.9042, lon: 116.4074 },
+  { name: "上海", admin1: "上海市", lat: 31.2304, lon: 121.4737 },
+  { name: "天津", admin1: "天津市", lat: 39.3434, lon: 117.3616 },
+  { name: "重庆", admin1: "重庆市", lat: 29.563, lon: 106.5516 },
+  { name: "广州", admin1: "广东省", lat: 23.1291, lon: 113.2644 },
+  { name: "深圳", admin1: "广东省", lat: 22.5431, lon: 114.0579 },
+  { name: "杭州", admin1: "浙江省", lat: 30.2741, lon: 120.1551 },
+  { name: "南京", admin1: "江苏省", lat: 32.0603, lon: 118.7969 },
+  { name: "苏州", admin1: "江苏省", lat: 31.2989, lon: 120.5853 },
+  { name: "武汉", admin1: "湖北省", lat: 30.5928, lon: 114.3055 },
+  { name: "成都", admin1: "四川省", lat: 30.5728, lon: 104.0668 },
+  { name: "西安", admin1: "陕西省", lat: 34.3416, lon: 108.9398 },
+  { name: "郑州", admin1: "河南省", lat: 34.7466, lon: 113.6254 },
+  { name: "长沙", admin1: "湖南省", lat: 28.2282, lon: 112.9388 },
+  { name: "青岛", admin1: "山东省", lat: 36.0671, lon: 120.3826 },
+  { name: "济南", admin1: "山东省", lat: 36.6512, lon: 117.1201 },
+  { name: "沈阳", admin1: "辽宁省", lat: 41.8057, lon: 123.4315 },
+  { name: "大连", admin1: "辽宁省", lat: 38.914, lon: 121.6147 },
+  { name: "哈尔滨", admin1: "黑龙江省", lat: 45.8038, lon: 126.5349 },
+  { name: "长春", admin1: "吉林省", lat: 43.8171, lon: 125.3235 },
+  { name: "石家庄", admin1: "河北省", lat: 38.0428, lon: 114.5149 },
+  { name: "太原", admin1: "山西省", lat: 37.8706, lon: 112.5489 },
+  { name: "合肥", admin1: "安徽省", lat: 31.8206, lon: 117.2272 },
+  { name: "福州", admin1: "福建省", lat: 26.0745, lon: 119.2965 },
+  { name: "厦门", admin1: "福建省", lat: 24.4798, lon: 118.0894 },
+  { name: "南昌", admin1: "江西省", lat: 28.682, lon: 115.8582 },
+  { name: "昆明", admin1: "云南省", lat: 25.0389, lon: 102.7183 },
+  { name: "贵阳", admin1: "贵州省", lat: 26.647, lon: 106.6302 },
+  { name: "南宁", admin1: "广西壮族自治区", lat: 22.817, lon: 108.3665 },
+  { name: "海口", admin1: "海南省", lat: 20.0444, lon: 110.1999 },
+  { name: "兰州", admin1: "甘肃省", lat: 36.0611, lon: 103.8343 },
+  { name: "西宁", admin1: "青海省", lat: 36.6171, lon: 101.7782 },
+  { name: "呼和浩特", admin1: "内蒙古自治区", lat: 40.8424, lon: 111.749 },
+  { name: "银川", admin1: "宁夏回族自治区", lat: 38.4872, lon: 106.2309 },
+  { name: "乌鲁木齐", admin1: "新疆维吾尔自治区", lat: 43.8256, lon: 87.6168 },
+  { name: "拉萨", admin1: "西藏自治区", lat: 29.652, lon: 91.1721 },
+  { name: "香港", admin1: "中国香港", lat: 22.3193, lon: 114.1694 },
+  { name: "澳门", admin1: "中国澳门", lat: 22.1987, lon: 113.5439 },
+  { name: "台北", admin1: "中国台湾", lat: 25.033, lon: 121.5654 },
+];
+
+// 先查本地表（精确或互相包含），命中直接返回坐标
+function matchCity(location: string) {
+  const input = (location || "").trim();
+  if (!input) return null;
+  const norm = input.replace(/[市省]$/, "");
+  return (
+    CITY_COORDS.find(
+      (c) => c.name === norm || c.name === input || c.name.includes(norm),
+    ) ?? null
+  );
+}
+
 // 把城市名解析为经纬度（Open-Meteo 地理编码，无需 Key，浏览器可直接跨域调用）
+// 加固：本地表兜底 + 超时控制 + 中文可读错误
 async function geocodeLocation(location: string) {
+  const hit = matchCity(location);
+  if (hit) {
+    return {
+      latitude: hit.lat,
+      longitude: hit.lon,
+      name: hit.name,
+      country: "中国",
+      admin1: hit.admin1,
+      local: true as const,
+    };
+  }
+
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=zh&format=json`;
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url, 6000);
+  } catch {
+    throw new Error(`地理编码服务连接失败：${location}。请检查网络，或直接使用常用城市名（如"北京""上海"）。`);
+  }
   if (!res.ok) {
     throw new Error(`地理编码请求失败: HTTP ${res.status}`);
   }
   const data = await res.json();
   const first = data.results?.[0];
   if (!first) {
-    throw new Error(`未找到地点: ${location}`);
+    throw new Error(`未找到地点: ${location}，请尝试更具体的城市名（如"北京""上海"）。`);
   }
   return {
     latitude: first.latitude as number,
@@ -156,7 +241,7 @@ async function fetchWeather(
     temperature_unit: units === "fahrenheit" ? "fahrenheit" : "celsius",
     wind_speed_unit: "kmh",
   });
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+  const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${params}`, 8000);
   if (!res.ok) {
     throw new Error(`天气请求失败: HTTP ${res.status}`);
   }
@@ -188,7 +273,7 @@ export function getBrowserPosition(): Promise<{
 // 反向地理编码：经纬度 → 城市名（BigDataCloud 免费接口，无需 Key，支持浏览器跨域）
 export async function reverseGeocode(latitude: number, longitude: number) {
   const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=zh`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, 6000);
   if (!res.ok) {
     throw new Error(`反向地理编码请求失败: HTTP ${res.status}`);
   }

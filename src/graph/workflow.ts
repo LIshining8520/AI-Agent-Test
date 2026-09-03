@@ -168,7 +168,11 @@ async function searchWeatherNode(state: typeof TriageAnnotation.State) {
     };
   }
 
-  const resStr = await get_weather.invoke(input);
+  const resStr = await get_weather.invoke(input).catch((error: any) => {
+    // 网络抖动 / 地理编码失败 / 上游 5xx：转成可读文案，让链路继续而非整图崩溃
+    const reason = error?.message || String(error || "未知错误");
+    return JSON.stringify({ error: `天气服务暂时不可用（${reason}）。请稍后重试，或改用常用城市名。` });
+  });
   const parsed = JSON.parse(resStr);
   if (parsed.error) {
     return { weather: parsed.error };
@@ -257,11 +261,45 @@ async function adviceNode(state: typeof TriageAnnotation.State) {
 }
 
 async function finalNode(state: typeof TriageAnnotation.State) {
+  // 关键修复：日期与地点由模板拼接，LLM 只负责写"天气描述"。
+  // 避免 LLM 把"明天"自由改成"今天"等相对词导致与用户提问错位。
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Date();
+  const todayStr = fmt(today);
+
+  // 异常路径：weather 字段已经是错误文案，直接当 reply 返回，不再二次包装
+  if (/未识别|未找到|未提供|错误|失败|无法|暂时不可用|不支[持持]|网络/i.test(state.weather || "")) {
+    return { reply: state.weather || "暂时无法给出天气播报" };
+  }
+
+  // 计算相对日期标签（避免 LLM 改写日期）
+  let dateLabel = state.date;
+  if (state.date && /^\d{4}-\d{2}-\d{2}$/.test(state.date)) {
+    const [y, m, d] = state.date.split("-").map(Number);
+    const target = new Date(y, m - 1, d);
+    const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const diff = Math.round((target.getTime() - base.getTime()) / 86400000);
+    if (diff === 0) dateLabel = "今天";
+    else if (diff === 1) dateLabel = "明天";
+    else if (diff === 2) dateLabel = "后天";
+    else if (diff === 3) dateLabel = "大后天";
+    else dateLabel = `${m}月${d}日`;
+  }
+
+  // LLM 仅生成天气 + 温度 + 出行建议的描述句（不要日期、不要地点）
   const res = await model.invoke(
-    `根据以下信息生成一句 50 字以内的友好天气播报：\n日期：${state.date}\n地点：${state.location}\n天气：${state.weather}\n出行建议：${state.advice}`,
+    `你是天气播报员。基于以下信息写一句简洁友好的天气描述（30 字以内），` +
+      `**严格不要包含日期、不要包含地点**，只描述天气、温度区间和出行建议：\n` +
+      `今天日期：${todayStr}\n天气：${state.weather}\n出行建议：${state.advice || ""}`,
   );
+  let desc = String(res.content ?? "").trim();
+  // 二次兜底：移除 desc 中可能残留的相对日期词，避免与模板前缀冲突
+  desc = desc.replace(/^(今天|明天|后天|大后天)/, "");
+
+  const reply = `${state.location || ""}${dateLabel}${desc}`;
   console.log(JSON.stringify(res), "res>finalNode");
-  return { reply: String(res.content) };
+  return { reply };
 }
 
 export const triageGraph = new StateGraph(TriageAnnotation)

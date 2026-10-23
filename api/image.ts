@@ -126,13 +126,18 @@ async function resolveImage(name: string, width: number): Promise<string | null>
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return hit.url;
 
-  // A 与 B 并行：串行等三级最慢要 10s（实测石林 9.9s），并行后压到 4s 以内
-  const [rest, wikidata] = await Promise.all([
+  /**
+   * 三路**完全并行**再按优先级取第一个命中的结果。
+   *
+   * 串行时最坏耗时要相加（实测洱海 9.8s、石林 9.9s），并行后约等于最慢的**单路**。
+   * 代价是没图的景点会多打一次 Commons 请求 —— 相比让用户盯着空框，这点成本值得。
+   */
+  const [rest, wikidata, commons] = await Promise.all([
     viaRestSummary(name),
     viaWikidata(name),
+    viaCommonsSearch(name, width),
   ]);
-  let found = rest ?? wikidata;
-  if (!found) found = await viaCommonsSearch(name, width);
+  const found = rest ?? wikidata ?? commons;
 
   cache.set(key, { url: found, exp: Date.now() + (found ? HIT_TTL : MISS_TTL) });
   return found;

@@ -97,7 +97,7 @@ async function viaRestSummary(name: string): Promise<string | null> {
 }
 
 /** B) Wikidata 实体 P18（跨语言命中率高，是不带 Logo 的标准照片） */
-async function viaWikidata(name: string): Promise<string | null> {
+async function viaWikidata(name: string, width: number): Promise<string | null> {
   const search = await getJson(
     'https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=zh&uselang=zh&limit=1&search=' +
       encodeURIComponent(name),
@@ -115,7 +115,7 @@ async function viaWikidata(name: string): Promise<string | null> {
   // 实测偶发 502（大皇宫那张就挂在重定向上）。
   const info = await getJson(
     'https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=imageinfo' +
-      '&iiprop=url|mime&iiurlwidth=400&titles=' +
+      `&iiprop=url|mime&iiurlwidth=${width}&titles=` +
       encodeURIComponent(`File:${file}`),
   );
   const page = Object.values((info?.query?.pages ?? {}) as Record<string, any>)[0];
@@ -143,6 +143,16 @@ async function viaCommonsSearch(name: string, width: number): Promise<string | n
   return null;
 }
 
+/**
+ * 解析图源。
+ *
+ * 小图（≤400）走 REST 摘要：一次请求最快，但**它的缩略图宽度是写死的**，
+ * 只适合卡片。
+ *
+ * 大图（>400，灯箱用）必须跳过 REST —— Wikimedia 只提供预生成的固定宽度，
+ * 手工把 `/330px-` 改写成 `/1200px-` 会直接 400（实测 640/800/1024 全挂，
+ * 1280 才碰巧有）。正确做法是带 `iiurlwidth` 问 API，它会返回最近的合法尺寸。
+ */
 async function resolveImage(
   name: string,
   width: number,
@@ -154,16 +164,18 @@ async function resolveImage(
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return hit.url;
 
-  /**
-   * 三路**完全并行**再按优先级取第一个命中的结果。
-   *
-   * 串行时最坏耗时要相加（实测洱海 9.8s、石林 9.9s），并行后约等于最慢的**单路**。
-   * 代价是没图的景点会多打一次 Commons 请求 —— 相比让用户盯着空框，这点成本值得。
-   */
-  const [rest, wikidata, commons] = await withSlot(() =>
-    Promise.all([viaRestSummary(name), viaWikidata(name), viaCommonsSearch(name, width)]),
-  );
-  const found = rest ?? wikidata ?? commons;
+  const large = width > 400;
+  const found = large
+    ? ((await withSlot(() =>
+        Promise.all([viaWikidata(name, width), viaCommonsSearch(name, width)]),
+      )).find(Boolean) ?? null)
+    : ((await withSlot(() =>
+        Promise.all([
+          viaRestSummary(name),
+          viaWikidata(name, width),
+          viaCommonsSearch(name, width),
+        ]),
+      )).find(Boolean) ?? null);
 
   cache.set(key, { url: found, exp: Date.now() + (found ? HIT_TTL : MISS_TTL) });
   return found;

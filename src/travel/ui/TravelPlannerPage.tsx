@@ -5,7 +5,7 @@
  * 这条动线可视化。左边一句话需求，右边四个面板如实展示每一步产物，
  * 包括**降级**（哪条链走了规则兜底）与**成本**（token / 美元），不粉饰。
  */
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { travelGraph, clarifyPrompt, type TravelState, type CheckItem } from '../graph/travel-graph';
 import { getTravelRuntime } from '../application/travel-runtime';
 import { profileCompleteness, COMPANION_LABELS } from '../shared/trip-profile';
@@ -83,7 +83,19 @@ function TravelPlannerPage({ onStage }: Props) {
   const [running, setRunning] = useState(false);
   const [trace, setTrace] = useState<string[]>([]);
   const [snap, setSnap] = useState<Snapshot>({});
+  /** 点击缩略图后的放大预览 */
+  const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null);
   const moodTimer = useRef<number | null>(null);
+
+  // Esc 关闭灯箱
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreview(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
 
   const runtime = getTravelRuntime();
   const degraded = runtime.forceFallback;
@@ -318,7 +330,12 @@ function TravelPlannerPage({ onStage }: Props) {
                       {shots.length > 0 && (
                         <div className="tp-shots">
                           {shots.map((a) => (
-                            <Thumb key={a.name} src={a.imageUrl!} alt={a.name} />
+                            <Thumb
+                              key={a.name}
+                              src={a.imageUrl!}
+                              alt={a.name}
+                              onOpen={setPreview}
+                            />
                           ))}
                         </div>
                       )}
@@ -419,6 +436,33 @@ function TravelPlannerPage({ onStage }: Props) {
           点「开始规划」。三句示例分别对应：正常画像 / 缺必填（待澄清）/ 字段冲突（入口拦下）。
         </p>
       )}
+
+      {/* 图片灯箱：点遮罩或按 Esc 关闭 */}
+      {preview && (
+        <div
+          className="tp-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={preview.alt}
+          onClick={() => setPreview(null)}
+        >
+          <figure className="tp-lightbox-figure" onClick={(e) => e.stopPropagation()}>
+            <img src={enlargeSrc(preview.src)} alt={preview.alt} />
+            <figcaption>
+              {preview.alt}
+              <span className="tp-lightbox-hint">点击空白处或按 Esc 关闭</span>
+            </figcaption>
+          </figure>
+          <button
+            type="button"
+            className="tp-lightbox-close"
+            aria-label="关闭"
+            onClick={() => setPreview(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -439,7 +483,15 @@ function Field({ label, value }: { label: string; value: string }) {
  * 一是图源里确实有小景点查不到图，二是本地 `vite dev` 没有 /api/image，
  * 两种情况都不该让行程卡片出现一个个破图标。
  */
-function Thumb({ src, alt }: { src: string; alt: string }) {
+function Thumb({
+  src,
+  alt,
+  onOpen,
+}: {
+  src: string;
+  alt: string;
+  onOpen: (p: { src: string; alt: string }) => void;
+}) {
   // 0=首次加载 1=带 r=1 重试中 2=确实没有图
   const [phase, setPhase] = useState(0);
   if (phase === 2) {
@@ -450,7 +502,12 @@ function Thumb({ src, alt }: { src: string; alt: string }) {
     );
   }
   return (
-    <span className="tp-thumb" title={alt}>
+    <button
+      type="button"
+      className="tp-thumb"
+      title={`点击查看大图：${alt}`}
+      onClick={() => onOpen({ src, alt })}
+    >
       <img
         // phase 变化要换 key 才会重新发起请求
         key={phase}
@@ -464,8 +521,13 @@ function Thumb({ src, alt }: { src: string; alt: string }) {
           else setPhase(2);
         }}
       />
-    </span>
+    </button>
   );
+}
+
+/** 灯箱用的放大地址：把 w 参数换大，代理会按新宽度重取 */
+function enlargeSrc(src: string): string {
+  return src.replace(/([?&])w=\d+/, '$1w=1200');
 }
 
 function ChainCard({

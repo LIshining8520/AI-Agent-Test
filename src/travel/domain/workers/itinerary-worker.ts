@@ -167,8 +167,8 @@ export class ItineraryWorker extends BaseWorker<ItineraryPlan> {
       durationHours: Math.max(0.5, a.durationHours ?? 2),
       cost: a.cost,
       location: a.location,
-      // 只有景点配图：餐饮/住宿/休息配图既不准也没意义
-      imageUrl: type === 'attraction' ? attractionImagePath(name) : undefined,
+      // 只有景点配图：餐饮/住宿/休息配图既不准也没意义；通用活动名（自由活动等）同样不给图
+      imageUrl: type === 'attraction' ? attractionImagePath(name) || undefined : undefined,
     };
   }
 }

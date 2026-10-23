@@ -590,7 +590,7 @@ export function buildFallbackItinerary(profile: TripProfile): ItineraryPlan {
         type: 'attraction' as const,
         durationHours: 3,
         location: k.cities[0],
-        imageUrl: attractionImagePath(first),
+        imageUrl: attractionImagePath(first) || undefined,
       },
       ...(showAfternoon
         ? [
@@ -599,7 +599,7 @@ export function buildFallbackItinerary(profile: TripProfile): ItineraryPlan {
               type: 'attraction' as const,
               durationHours: 2.5,
               location: k.cities[0],
-              imageUrl: attractionImagePath(second),
+              imageUrl: attractionImagePath(second) || undefined,
             },
           ]
         : []),

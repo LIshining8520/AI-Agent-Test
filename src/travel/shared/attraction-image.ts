@@ -15,6 +15,13 @@ const DEFAULT_WIDTH = 360;
  * LLM 排出来的活动名常常带动作词——「洱海环湖骑行」「大理古城游览」
  * 「丽江古城自由活动」。整串丢给图源基本搜不到，必须剥掉动词与括注。
  */
+/**
+ * 这些不是「地名」，拿去搜图只会得到随机风景照，宁可不配图。
+ * 清洗后落在这些词上的，直接返回空串（调用方当作无图处理）。
+ */
+const GENERIC_NAMES =
+  /^(自由活动|休息|用餐|早餐|午餐|晚餐|入住|退房|返程|出发|抵达|城市漫步|购物|休闲|酒店|住宿|集合|解散)$/;
+
 function cleanAttractionName(name: string): string {
   let s = (name ?? '').trim();
   // LLM 常用「A/B」表示并列活动，取第一个就够了（配图只需要一个主体）
@@ -28,7 +35,9 @@ function cleanAttractionName(name: string): string {
   return s || (name ?? '').trim();
 }
 
+/** 返回配图地址；通用活动（自由活动/用餐/休息…）返回空串，表示不该有图 */
 export function attractionImagePath(name: string, width = DEFAULT_WIDTH): string {
-  const q = encodeURIComponent(cleanAttractionName(name));
-  return `/api/image?q=${q}&w=${width}`;
+  const cleaned = cleanAttractionName(name);
+  if (!cleaned || GENERIC_NAMES.test(cleaned)) return '';
+  return `/api/image?q=${encodeURIComponent(cleaned)}&w=${width}`;
 }

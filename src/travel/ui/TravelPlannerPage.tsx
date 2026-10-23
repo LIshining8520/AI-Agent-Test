@@ -84,7 +84,7 @@ function TravelPlannerPage({ onStage }: Props) {
   const [trace, setTrace] = useState<string[]>([]);
   const [snap, setSnap] = useState<Snapshot>({});
   const moodTimer = useRef<number | null>(null);
-console.log('TravelPlannerPage render', {  snap });
+
   const runtime = getTravelRuntime();
   const degraded = runtime.forceFallback;
   const run = useCallback(async () => {
@@ -313,6 +313,8 @@ console.log('TravelPlannerPage render', {  snap });
                   const shots = d.activities.filter((a) => a.imageUrl).slice(0, 2);
                   return (
                     <li key={d.day}>
+                      <b>D{d.day}</b> {d.activities.map((a) => a.name).join(' / ')}
+                      {d.note && <span className="tp-sub">{d.note}</span>}
                       {shots.length > 0 && (
                         <div className="tp-shots">
                           {shots.map((a) => (
@@ -320,8 +322,6 @@ console.log('TravelPlannerPage render', {  snap });
                           ))}
                         </div>
                       )}
-                      <b>D{d.day}</b> {d.activities.map((a) => a.name).join(' / ')}
-                      {d.note && <span className="tp-sub">{d.note}</span>}
                     </li>
                   );
                 })}

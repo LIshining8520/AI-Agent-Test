@@ -37,9 +37,19 @@ function cleanAttractionName(name: string): string {
   return s || (name ?? '').trim();
 }
 
-/** 返回配图地址；通用活动（自由活动/用餐/休息…）返回空串，表示不该有图 */
+/**
+ * 返回配图地址；通用活动（自由活动/用餐/休息…）返回空串，表示不该有图。
+ *
+ * 地址是**绝对 URL**（`https://当前域名/api/image?...`）：导出、分享、贴到别处都能直接打开。
+ * 域名叫在运行时从 `window.location.origin` 取，不是构建期写死 ——
+ * 所以同一份产物在 localhost / *.vercel.app / 自有域名下都会自动指向自己。
+ * 构建期与 Node（无 window）退回相对路径。
+ */
 export function attractionImagePath(name: string, width = DEFAULT_WIDTH): string {
   const cleaned = cleanAttractionName(name);
   if (!cleaned || GENERIC_NAMES.test(cleaned)) return '';
-  return `/api/image?q=${encodeURIComponent(cleaned)}&w=${width}`;
+  const path = `/api/image?q=${encodeURIComponent(cleaned)}&w=${width}`;
+  return typeof window !== 'undefined' && window.location?.origin
+    ? new URL(path, window.location.origin).href
+    : path;
 }

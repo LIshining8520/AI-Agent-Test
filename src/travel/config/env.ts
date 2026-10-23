@@ -13,6 +13,11 @@
  */
 import { z } from 'zod';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '../shared/llm';
+import {
+  PROXY_PLACEHOLDER_KEY,
+  isProxyMode,
+  proxyBaseUrl,
+} from '../../config/llm-endpoint';
 
 /** 浏览器与 Node 双兼容的 env 读取（与项目既有 src/graph/llm.ts 口径一致） */
 function readEnv(key: string): string | undefined {
@@ -56,6 +61,11 @@ export interface LlmProviderEndpoint {
   maxTokens?: number;
   /** 是否显式关闭思维链：DeepSeek 推理模型默认开启，会吃满 max_tokens 导致正文为空 */
   disableThinking?: boolean;
+  /**
+   * 经同源代理转发：真正的 Key 在服务端（`DEEPSEEK_API_KEY`），
+   * 前端既不带 Authorization，产物里也不会有任何 Key。
+   */
+  viaProxy?: boolean;
 }
 
 let cached: TravelEnv | null = null;
@@ -90,6 +100,21 @@ export function loadTravelEnv(): TravelEnv {
 export function getLlmProviders(): LlmProviderEndpoint[] {
   const env = loadTravelEnv();
   const chain: LlmProviderEndpoint[] = [];
+
+  // 线上模式：只挂代理这一节，前端不持有 Key
+  if (isProxyMode()) {
+    chain.push({
+      name: 'deepseek',
+      baseUrl: proxyBaseUrl(),
+      apiKey: PROXY_PLACEHOLDER_KEY,
+      model: env.deepseekModel,
+      temperature: DEFAULT_TEMPERATURE,
+      maxTokens: DEFAULT_MAX_TOKENS,
+      disableThinking: true,
+      viaProxy: true,
+    });
+    return chain;
+  }
 
   if (env.deepseekKey) {
     chain.push({

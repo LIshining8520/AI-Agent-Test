@@ -17,15 +17,24 @@ import {
   reverseGeocode,
 } from "./tools.js";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import {
+  PROXY_PLACEHOLDER_KEY,
+  isProxyMode,
+  proxyBaseUrl,
+} from "../config/llm-endpoint";
 
 // ================= 天气助手 triage 工作流（App 使用） =================
 // 浏览器环境没有 process.env，Vite 会把 .env 中 VITE_ 开头的变量注入 import.meta.env。
-// 注意：VITE_ 变量会打进前端产物，仅供本地/内部开发使用，部署到公网请走后端代理。
-const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY as string | undefined;
+// 线上改用同源代理：构建环境不配 VITE_DEEPSEEK_API_KEY，Key 只存在于服务端。
+const proxyMode = isProxyMode();
+const apiKey = proxyMode
+  ? PROXY_PLACEHOLDER_KEY
+  : (import.meta.env.VITE_DEEPSEEK_API_KEY as string | undefined);
 const modelName =
   import.meta.env.VITE_DEEPSEEK_MODEL || "deepseek-v4-flash";
-const baseURL =
-  import.meta.env.VITE_DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
+const baseURL = proxyMode
+  ? proxyBaseUrl()
+  : import.meta.env.VITE_DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
 
 const TriageAnnotation = Annotation.Root({
   input: Annotation<string>,

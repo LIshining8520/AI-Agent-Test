@@ -1,5 +1,10 @@
 import { ChatOpenAI } from "@langchain/openai";
 import type { BaseMessage } from "@langchain/core/messages";
+import {
+  PROXY_PLACEHOLDER_KEY,
+  isProxyMode,
+  proxyBaseUrl,
+} from "../config/llm-endpoint";
 
 // 浏览器环境没有 process.env，Vite 会把 .env 中 VITE_ 开头的变量注入 import.meta.env。
 // 注意：VITE_ 变量会打进前端产物，仅供本地/内部开发使用，部署到公网请走后端代理。
@@ -11,9 +16,14 @@ function readEnv(key: string): string | undefined {
   return undefined;
 }
 
-const deepseekApiKey = readEnv("VITE_DEEPSEEK_API_KEY");
-const deepseekBaseURL =
-  readEnv("VITE_DEEPSEEK_BASE_URL") || "https://api.deepseek.com/v1";
+// 线上走同源代理（`/api/llm`），Key 只在服务端；本地直连时才有前端 Key。
+const proxyMode = isProxyMode();
+const deepseekApiKey = proxyMode
+  ? PROXY_PLACEHOLDER_KEY
+  : readEnv("VITE_DEEPSEEK_API_KEY");
+const deepseekBaseURL = proxyMode
+  ? proxyBaseUrl()
+  : readEnv("VITE_DEEPSEEK_BASE_URL") || "https://api.deepseek.com/v1";
 const deepseekModel = readEnv("VITE_DEEPSEEK_MODEL") || "deepseek-v4-flash";
 
 function toText(input: string | BaseMessage[]): string {

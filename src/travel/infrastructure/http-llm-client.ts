@@ -95,7 +95,7 @@ export class HttpLlmClient implements LlmClient {
 
   /** 是否有可用供应商（无 Key 时页面走兜底动线） */
   get hasProvider(): boolean {
-    return this.providers.some((p) => !!p.apiKey);
+    return this.providers.some((p) => !!p.apiKey || !!p.viaProxy);
   }
 
   /**
@@ -110,7 +110,8 @@ export class HttpLlmClient implements LlmClient {
     const attempts: Array<{ provider: string; error?: string }> = [];
 
     for (const p of this.providers) {
-      if (!p.apiKey) continue;
+      // 代理模式下前端没有真 Key，靠 viaProxy 放行
+      if (!p.apiKey && !p.viaProxy) continue;
       // thinking 字段先带、失败再去掉重试（兼容不支持该字段的端点）
       const thinkingModes: Array<boolean> = p.disableThinking ? [true, false] : [false];
       for (const withThinking of thinkingModes) {
@@ -128,14 +129,18 @@ export class HttpLlmClient implements LlmClient {
           const url = p.baseUrl.replace(/\/+$/, '') + '/chat/completions';
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+          // 代理模式下不带 Authorization：Key 只存在于服务端环境变量
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          if (!p.viaProxy && p.apiKey) {
+            headers.Authorization = `Bearer ${p.apiKey}`;
+          }
           let res: Response;
           try {
             res = await fetch(url, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${p.apiKey}`,
-              },
+              headers,
               body: JSON.stringify(payload),
               signal: controller.signal,
             });

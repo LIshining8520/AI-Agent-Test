@@ -58,9 +58,48 @@ cp .env.example .env   # 然后在 .env 里填入真实 Key
 `src/graph/workflow.ts` 会优先使用 DeepSeek 的结构化输出判断输入是否为代码 bug；
 没有 Key 时自动退回本地规则匹配（Mock 模式），页面依然可用。
 
-> ⚠️ 安全提示：`VITE_` 变量会打进前端产物，任何访问页面的人都能看到，
-> 所以只适合本地开发。部署到公网时请把 Key 放在后端，通过代理转发请求。
-> 之前出现在对话或示例文件里的 Key 建议尽快在对应平台吊销并重新生成。
+> ⚠️ 安全提示：`VITE_` 变量会在构建时被**字符串内联**进 `dist/assets/*.js`，
+> 任何人 F12 搜 `sk-` 就能抄走。所以本地开发可以直连，**线上必须走下面的代理**。
+
+## 部署到线上（Vercel）
+
+线上用一层 Serverless 函数把 Key 挡在服务端，前端只调同源 `/api/llm`：
+
+```
+浏览器 ──POST /api/llm/chat/completions──▶ api/llm/[...path].ts ──Bearer Key──▶ api.deepseek.com
+```
+
+**1. 平台侧环境变量（Vercel → Settings → Environment Variables）**
+
+| 变量 | 是否必填 | 说明 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | ✅ 必填 | 真正的 Key。**注意没有 `VITE_` 前缀** |
+| `DEEPSEEK_BASE_URL` | 可选 | 默认 `https://api.deepseek.com/v1` |
+| `LLM_ALLOWED_MODELS` | 可选 | 模型白名单，逗号分隔 |
+| `VITE_DEEPSEEK_API_KEY` | ❌ **千万不要配** | 一配就会被打进前端产物 |
+
+前端会自动进入代理模式：生产构建且没有 `VITE_DEEPSEEK_API_KEY` 时即走 `/api/llm`。
+需要强制指定时用 `VITE_LLM_PROXY=1`（强制开）/ `VITE_LLM_PROXY=0`（强制关）。
+
+**2. 部署**
+
+```bash
+npx vercel            # 首次会引导登录与关联项目
+npx vercel --prod     # 发布到生产环境
+```
+
+或在 Vercel 控制台导入 Git 仓库，框架预设选 **Vite**，构建命令 `npm run build`，
+输出目录 `dist`（`vercel.json` 已写好，一般无需手动填）。
+
+**3. 验证 Key 没漏**
+
+```bash
+npm run build && grep -ro "sk-[a-zA-Z0-9]\{20,\}" dist/ || echo "干净：产物里没有 Key"
+```
+
+代理函数自带三道护栏：模型白名单、`max_tokens` 钳到 8192、单 IP 30 次/分钟限流
+（内存级，仅对同一函数实例生效）。要应对真实流量，建议在 Vercel 侧再叠加
+Firewall / 限流规则。
 
 ## 常用命令
 

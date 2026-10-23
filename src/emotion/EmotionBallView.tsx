@@ -9,7 +9,6 @@ import type {
   EmotionBallCreateOptions,
   EmotionBallInstance,
 } from "./emotionball.d";
-import { EMOJI_NAME } from "./agentEmotion";
 
 interface Props {
   /** 当前表情 ID（外部状态驱动） */
@@ -205,11 +204,9 @@ export default function EmotionBallView({
       }}
     >
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      {bubble ? (
+      {bubble && (
         <div style={styles.bubble}>{bubble}</div>
-      ) : (
-        <div style={styles.name}>{EMOJI_NAME[emotion] ?? emotion}</div>
-      )}
+      ) }
     </div>
   );
 }

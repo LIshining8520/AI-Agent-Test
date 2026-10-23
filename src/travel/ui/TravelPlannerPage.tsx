@@ -495,11 +495,7 @@ function Thumb({
   // 0=首次加载 1=带 r=1 重试中 2=确实没有图
   const [phase, setPhase] = useState(0);
   if (phase === 2) {
-    return (
-      <span className="tp-thumb tp-thumb-empty" title={alt}>
-        {alt.slice(0, 2)}
-      </span>
-    );
+    return null;
   }
   return (
     <button

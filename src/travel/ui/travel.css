@@ -328,11 +328,17 @@
   font-size: 13px;
 }
 
-/* 景点缩略图：卡片窄，固定 64×48，失败退化为文字块 */
+/* 景点缩略图：卡片窄，固定 64×48 */
 .tp-shots {
   display: flex;
   gap: 6px;
   margin-bottom: 7px;
+}
+
+/* 缩略图全部加载失败时（Thumb 返回 null），别留一条空行 */
+.tp-shots:empty {
+  display: none;
+  margin-bottom: 0;
 }
 
 .tp-thumb {

@@ -6,6 +6,11 @@
  * 前端只会调 `/api/llm/chat/completions`（不带 Authorization），本函数在服务端
  * 补上 `DEEPSEEK_API_KEY` 后转发到 OpenAI 兼容端点，再把响应原样回给浏览器。
  *
+ * ⚠️ 文件路径必须是**字面量**：普通 Vercel 项目的 `/api` 目录不支持
+ * `[...slug]` 这类方括号动态路由（那是 Next.js 的文件约定），
+ * 写成 `api/llm/[...path].ts` 会得到 404 NOT_FOUND。
+ * 所以路由 = 文件路径，即 `api/llm/chat/completions.ts` → `/api/llm/chat/completions`。
+ *
  * 服务端环境变量（Vercel → Settings → Environment Variables）：
  *  - `DEEPSEEK_API_KEY`  必填，真正的 Key（注意**不要**加 VITE_ 前缀）
  *  - `DEEPSEEK_BASE_URL` 可选，默认 https://api.deepseek.com/v1
@@ -19,7 +24,6 @@
 
 type VercelRequest = {
   method?: string;
-  query: Record<string, string | string[] | undefined>;
   headers: Record<string, string | string[] | undefined>;
   body?: unknown;
 };
@@ -32,6 +36,8 @@ type VercelResponse = {
 };
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
+/** 上游路径固定：OpenAI 兼容协议只有这一个我们需要的端点 */
+const UPSTREAM_PATH = "chat/completions";
 const DEFAULT_ALLOWED_MODELS = [
   "deepseek-v4-flash",
   "deepseek-flash",
@@ -72,14 +78,6 @@ function jsonError(
 ) {
   res.status(status).setHeader("Content-Type", "application/json; charset=utf-8");
   res.send(JSON.stringify({ error: { message, type } }));
-}
-
-/** catch-all 参数归一化：`[...path]` 可能是 string 或 string[] */
-function suffixOf(query: VercelRequest["query"]): string {
-  const raw = query.path;
-  const parts = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  const suffix = parts.filter(Boolean).join("/");
-  return suffix || "chat/completions";
 }
 
 function clientIp(headers: VercelRequest["headers"], fallback: string): string {
@@ -156,7 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     /\/+$/,
     "",
   );
-  const url = `${base}/${suffixOf(req.query)}`;
+  const url = `${base}/${UPSTREAM_PATH}`;
 
   let upstream: Response;
   try {

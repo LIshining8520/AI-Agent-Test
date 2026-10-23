@@ -66,7 +66,7 @@ cp .env.example .env   # 然后在 .env 里填入真实 Key
 线上用一层 Serverless 函数把 Key 挡在服务端，前端只调同源 `/api/llm`：
 
 ```
-浏览器 ──POST /api/llm/chat/completions──▶ api/llm/[...path].ts ──Bearer Key──▶ api.deepseek.com
+浏览器 ──POST /api/llm/chat/completions──▶ api/llm/chat/completions.ts ──Bearer Key──▶ api.deepseek.com
 ```
 
 **1. 平台侧环境变量（Vercel → Settings → Environment Variables）**

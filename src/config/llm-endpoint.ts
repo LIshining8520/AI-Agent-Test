@@ -7,7 +7,7 @@
  *
  * 所以线上部署的正确姿势是：
  *  - 托管平台（如 Vercel）侧 **不要** 配置 `VITE_DEEPSEEK_API_KEY`；
- *  - 改用服务端环境变量 `DEEPSEEK_API_KEY`，由 `api/llm/[...path].ts` 注入；
+ *  - 改用服务端环境变量 `DEEPSEEK_API_KEY`，由 `api/llm/chat/completions.ts` 注入；
  *  - 前端只调同源 `/api/llm/chat/completions`，不持有任何 Key。
  *
  * 判定规则（优先级从高到低）：
@@ -16,7 +16,7 @@
  *  3. 其余情况（本地 dev、本地带 Key 构建）→ 直连。
  */
 
-/** 同源代理路径（与服务端函数 `api/llm/[...path].ts` 对应） */
+/** 同源代理路径（与服务端函数 `api/llm/chat/completions.ts` 对应） */
 export const LLM_PROXY_PATH = "/api/llm";
 
 /** 走代理时前端携带的占位 Key：服务端会丢弃它并换成真正的服务端 Key */

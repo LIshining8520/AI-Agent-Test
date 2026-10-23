@@ -31,8 +31,30 @@ const UA = 'TravelPlannerDemo/1.0 (https://lanai.icu; contact: demo@lanai.icu)';
 const TIMEOUT_MS = 6000;
 /** 命中缓存 12 小时；未命中的负结果只缓存 10 分钟（防抖一次网络失误把图永久判死） */
 const HIT_TTL = 12 * 3600 * 1000;
-const MISS_TTL = 10 * 60 * 1000;
+const MISS_TTL = 3 * 60 * 1000;
 const cache = new Map<string, { url: string | null; exp: number }>();
+
+/**
+ * 并发闸门：一次规划会同时请求十几张图，每张又要打 3 个上游，
+ * 瞬时 30+ 请求容易被 Wikimedia 限流（表现为整批 404）。
+ * 限制单实例同时解析 4 个，其余排队。
+ */
+const MAX_CONCURRENT = 4;
+let active = 0;
+const waiters: Array<() => void> = [];
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiters.push(resolve));
+  }
+  active += 1;
+  try {
+    return await fn();
+  } finally {
+    active -= 1;
+    waiters.shift()?.();
+  }
+}
 
 function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? '';
@@ -138,11 +160,9 @@ async function resolveImage(
    * 串行时最坏耗时要相加（实测洱海 9.8s、石林 9.9s），并行后约等于最慢的**单路**。
    * 代价是没图的景点会多打一次 Commons 请求 —— 相比让用户盯着空框，这点成本值得。
    */
-  const [rest, wikidata, commons] = await Promise.all([
-    viaRestSummary(name),
-    viaWikidata(name),
-    viaCommonsSearch(name, width),
-  ]);
+  const [rest, wikidata, commons] = await withSlot(() =>
+    Promise.all([viaRestSummary(name), viaWikidata(name), viaCommonsSearch(name, width)]),
+  );
   const found = rest ?? wikidata ?? commons;
 
   cache.set(key, { url: found, exp: Date.now() + (found ? HIT_TTL : MISS_TTL) });

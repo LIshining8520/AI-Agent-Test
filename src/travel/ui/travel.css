@@ -1,0 +1,287 @@
+/* 旅游多 Agent 页面样式（复用 index.css 的主题变量，深/浅色自动跟随） */
+
+.tp {
+  display: grid;
+  gap: 20px;
+}
+
+.tp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.tp-row h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.tp-badge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.tp-badge.warn {
+  border-color: rgba(217, 119, 6, 0.5);
+  background: rgba(217, 119, 6, 0.12);
+  color: #d97706;
+}
+
+.tp-meta {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.tp-ok {
+  color: #16a34a;
+  font-style: normal;
+  margin-left: 6px;
+}
+
+.tp-degraded {
+  color: #d97706;
+  font-style: normal;
+  margin-left: 6px;
+}
+
+.tp-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tp-example {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tp-example:hover:not(:disabled) {
+  filter: brightness(0.96);
+  text-decoration: underline;
+}
+
+/* 画像字段网格：3 列 × 2 行，六项刚好铺满，不留半行孤格 */
+.tp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .tp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tp-field {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.tp-field-label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.tp-field-value {
+  font-size: 15px;
+  color: var(--text-h);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+/* 三链并排 */
+.tp-chains {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.tp-chain.waiting {
+  opacity: 0.55;
+}
+
+.tp-chain.ready {
+  border-color: var(--accent-border);
+}
+
+.tp-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.tp-list li b {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.tp-sub {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+/* 预算条 */
+.tp-budget {
+  display: grid;
+  gap: 8px;
+}
+
+.tp-bar {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tp-bar-label {
+  opacity: 0.8;
+}
+
+.tp-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.tp-bar-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.tp-bar-value {
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+/* 提示块 */
+.tp-alert {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.tp-alert ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.tp-alert.warn {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(217, 119, 6, 0.08);
+  color: #b45309;
+}
+
+.tp-alert.danger {
+  border-color: rgba(220, 38, 38, 0.45);
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+}
+
+.tp-alert.ok {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: rgba(22, 163, 74, 0.08);
+  color: #16a34a;
+}
+
+.tp-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+/* 质检清单 */
+.tp-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.tp-checks li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+.tp-checks li.ok .tp-check-mark {
+  color: #16a34a;
+}
+
+.tp-checks li.bad .tp-check-mark {
+  color: #dc2626;
+}
+
+.tp-checks li .tp-sub {
+  grid-column: 2;
+}
+
+/* 成本 */
+.tp-cost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.tp-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.tp-chip.warn {
+  border-color: rgba(217, 119, 6, 0.45);
+  color: #d97706;
+}
+
+.tp-summary {
+  margin-top: 12px;
+  white-space: pre-wrap;
+}
+
+/* 并行节点徽章加个侧边色，暗示「同时跑的」 */
+.trace-step.parallel {
+  border-style: dashed;
+}

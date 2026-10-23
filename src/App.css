@@ -1,18 +1,28 @@
 .page {
+  /* #root 是 flex column，自动外边距会让本元素退化成 fit-content（只有 763px），
+     显式 width:100% 才能撑满到 max-width —— 否则三链卡片挤成 2 列 */
+  width: 100%;
+  box-sizing: border-box;
   max-width: 900px;
   margin: 0 auto;
   padding: 40px 20px 80px;
   display: grid;
   gap: 20px;
+  /* #root 全局是 text-align:center（Vite 模板默认），页面内容改成左对齐才好读 */
+  text-align: left;
 }
 
 /* 标题区 + 球球 */
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
+}
+
+.head-title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .head-title h1 {
@@ -228,4 +238,39 @@ code {
 .weather-line {
   padding: 6px 2px 0;
   opacity: 0.9;
+}
+
+/* 天气页内部容器（页面已拆成组件，需要自己撑起纵向间距） */
+.weather {
+  display: grid;
+  gap: 20px;
+}
+
+/* 顶部 Tab 切换 */
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.tab {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.tab.active {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
 }

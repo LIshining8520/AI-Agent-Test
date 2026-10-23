@@ -17,12 +17,34 @@ npm install
 npm run dev
 ```
 
-打开 Vite 输出的本地地址即可。页面内置了一个
+打开 Vite 输出的本地地址即可。顶部有两个 Tab：
+
+### Tab 1 · 旅游多 Agent（课 9-12，默认）
+
+移植自 `projects-v4-ts-9-12`（Node / pnpm workspace），按课程大纲把
+**画像契约 → 解析管线 → 三子链并行 → 收口质检** 这条动线接进本工程：
+
+```
+START → parse ─┬─(必填缺失)───────────────────────────→ END
+                └─(ready) → dispatch ─┬→ routeWorker ───┐
+                                      ├→ itineraryWorker ┼→ arbitrate → END
+                                      └→ budgetWorker ───┘
+```
+
+- `src/travel/graph/travel-graph.ts`：LangGraph 编排（fan-out 三链并行 / fan-in 收口）
+- `src/travel/ui/TravelPlannerPage.tsx`：画像面板、三链卡片、5 项质检、成本归因
+- 章节与代码的逐条映射、以及和源工程的差异，见 **`src/travel/README.md`**
+- 没配 Key 时自动进入「规则兜底模式」（页面右上角标注），三链照样出产物
+
+三句内置示例分别演示：正常画像 / 缺必填（待澄清，不空跑算力）/ 字段冲突（入口拦下）。
+
+### Tab 2 · 天气助手
+
 “意图分类 → 条件路由 → 生成回复”工作流演示：
 
 - `src/graph/workflow.ts`：LangGraph 图定义（`StateGraph`、`Annotation.Root`、
   `addConditionalEdges`、`stream` / `invoke`）
-- `src/App.tsx`：React 组件，用 `streamMode: "updates"` 逐节点渲染执行过程
+- `src/pages/WeatherPage.tsx`：React 组件，用 `streamMode: "updates"` 逐节点渲染执行过程
 
 ## 接入真实 LLM 节点
 

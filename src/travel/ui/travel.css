@@ -285,3 +285,25 @@
 .trace-step.parallel {
   border-style: dashed;
 }
+
+/* 往返大交通（出发地 ⇄ 目的地）：与城内路线视觉上分区，强调它是刚性大额支出 */
+.tp-intercity {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.tp-intercity-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.tp-intercity .tp-list li {
+  font-size: 13px;
+}
+

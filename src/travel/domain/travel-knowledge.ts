@@ -9,7 +9,15 @@
  *  1) 画像解析 phase-2 的经验规则提取（目的地识别/归一）；
  *  2) Route / Itinerary / Budget 三执行者在 LLM 不可用或失败时的兜底产物。
  */
-import type { ItineraryPlan, RoutePlan, TripProfile, BudgetPlan } from '../shared/travel-types';
+import type {
+  Companion,
+  IntercityLeg,
+  IntercityMode,
+  ItineraryPlan,
+  RoutePlan,
+  TripProfile,
+  BudgetPlan,
+} from '../shared/travel-types';
 
 export type Pace = TripProfile['preferences']['pace'];
 export type AccommodationLevel = TripProfile['preferences']['accommodationLevel'];
@@ -168,6 +176,168 @@ export function transportPreference(profile: TripProfile): 'public' | 'private' 
 }
 
 /* ------------------------------------------------------------------ */
+/* 城际大交通：坐标表 + 距离/票价经验模型（出发地 ⇄ 目的地）             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 主要城市经纬度（粗粒度）。
+ *
+ * 只用来算**直线距离**再乘线路系数，不做精确导航 —— 目标是「量级正确」：
+ * 杭州→昆明该给飞机票钱，杭州→南京该给高铁票钱，而不是拿一个固定值糊弄。
+ */
+export const CITY_COORDS: Record<string, [number, number]> = {
+  北京: [39.9, 116.4],
+  上海: [31.23, 121.47],
+  杭州: [30.25, 120.16],
+  南京: [32.06, 118.8],
+  苏州: [31.3, 120.58],
+  宁波: [29.87, 121.55],
+  广州: [23.13, 113.26],
+  深圳: [22.54, 114.06],
+  成都: [30.57, 104.07],
+  重庆: [29.56, 106.55],
+  昆明: [25.04, 102.72],
+  大理: [25.61, 100.27],
+  丽江: [26.87, 100.23],
+  桂林: [25.27, 110.29],
+  阳朔: [24.78, 110.49],
+  青岛: [36.07, 120.38],
+  西安: [34.34, 108.94],
+  武汉: [30.59, 114.31],
+  长沙: [28.23, 112.94],
+  郑州: [34.75, 113.62],
+  天津: [39.08, 117.2],
+  济南: [36.65, 117.12],
+  厦门: [24.48, 118.09],
+  福州: [26.07, 119.3],
+  三亚: [18.25, 109.51],
+  贵阳: [26.65, 106.63],
+  南宁: [22.82, 108.32],
+  哈尔滨: [45.8, 126.53],
+  沈阳: [41.8, 123.43],
+  大连: [38.91, 121.61],
+  呼和浩特: [40.84, 111.75],
+  乌鲁木齐: [43.83, 87.62],
+  拉萨: [29.65, 91.14],
+};
+
+/** 大交通方式的中文渲染 */
+export const INTERCITY_MODE_LABEL: Readonly<Record<IntercityMode, string>> = {
+  flight: '飞机',
+  'high-speed-rail': '高铁',
+  train: '普速列车',
+  bus: '长途汽车',
+  drive: '自驾',
+};
+
+/** 把用户写的城市名收敛到坐标表里的规范名（容忍「杭州市」「浙江杭州」等写法） */
+export function resolveCity(raw: string | undefined): string | undefined {
+  const t = (raw ?? '').trim().replace(/[市省]$/g, '');
+  if (!t) return undefined;
+  if (CITY_COORDS[t]) return t;
+  const keys = Object.keys(CITY_COORDS).sort((a, b) => b.length - a.length);
+  // 长名优先，避免「乌鲁木齐」被更短的城市名截走
+  return keys.find((k) => t.includes(k)) ?? keys.find((k) => k.includes(t) && t.length >= 2);
+}
+
+function haversineKm(a: [number, number], b: [number, number]): number {
+  const R = 6371;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b[0] - a[0]);
+  const dLng = rad(b[1] - a[1]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+
+/** 计费人数折算：儿童半价、婴儿 0.1（与住宿口径一致，不按成人全价摊） */
+export function ticketUnits(companions: Companion[]): number {
+  const units = (companions ?? []).reduce(
+    (s, c) => s + (c === 'child' ? 0.5 : c === 'infant' ? 0.1 : 1),
+    0,
+  );
+  return Math.max(0.1, Math.round(units * 10) / 10);
+}
+
+const round5 = (n: number) => Math.round(n / 5) * 5;
+
+/**
+ * 按距离选大交通方式并给出票价/耗时。
+ *
+ * 经验口径（2026 年国内均价，取整到 5 元）：
+ *  - ≤120km   ：长途汽车，约 0.3 元/公里；
+ *  - ≤1200km  ：高铁二等座，约 0.42 元/公里（地面里程按直线的 1.2 倍折算）；
+ *  - >1200km  ：飞机经济舱，约 0.42 元/公里 + 100 元机建燃油。
+ */
+function planIntercity(km: number): {
+  mode: IntercityMode;
+  minutes: number;
+  unitCost: number;
+} {
+  if (km <= 120) {
+    const ground = km * 1.2;
+    return {
+      mode: 'bus',
+      minutes: Math.max(30, Math.round((ground / 70) * 60) + 10),
+      unitCost: Math.max(15, round5(ground * 0.3)),
+    };
+  }
+  if (km <= 1200) {
+    const ground = km * 1.2;
+    return {
+      mode: 'high-speed-rail',
+      // 高铁含进站安检约 40 分钟；均速按 280km/h
+      minutes: Math.round((ground / 280) * 60) + 40,
+      unitCost: Math.max(30, round5(ground * 0.42)),
+    };
+  }
+  const air = km * 1.15;
+  return {
+    mode: 'flight',
+    // 机场流程 90 分钟 + 巡航 + 落地取行李 40 分钟；巡航按 750km/h
+    minutes: 90 + Math.round((air / 750) * 60) + 40,
+    unitCost: Math.max(300, round5(air * 0.42 + 100)),
+  };
+}
+
+/**
+ * 估算「出发地 ⇄ 目的地」往返大交通。
+ *
+ * 返回空数组的三种情况（都不阻塞编排，只是预算里没有大交通这一项）：
+ *  1) 用户没给出发地；2) 出发地/目的地不在坐标表里；3) 出发地就是目的地。
+ */
+export function estimateIntercity(profile: TripProfile): IntercityLeg[] {
+  const originCity = resolveCity(profile.origin);
+  const k = findKnowledge(profile.destination);
+  const destCity =
+    resolveCity(k?.cities?.[0]) ?? resolveCity(profile.destination) ?? undefined;
+  if (!originCity || !destCity || originCity === destCity) return [];
+
+  const km = haversineKm(CITY_COORDS[originCity]!, CITY_COORDS[destCity]!);
+  const plan = planIntercity(km);
+  const units = ticketUnits(profile.companions);
+  const note = `${km} 公里 · ${INTERCITY_MODE_LABEL[plan.mode]}约 ${Math.round(plan.minutes / 60)} 小时`;
+
+  const leg = (direction: IntercityLeg['direction']): IntercityLeg => ({
+    direction,
+    from: direction === 'outbound' ? originCity : destCity,
+    to: direction === 'outbound' ? destCity : originCity,
+    mode: plan.mode,
+    estDurationMin: plan.minutes,
+    unitCost: plan.unitCost,
+    totalCost: Math.round(plan.unitCost * units),
+    note,
+  });
+  return [leg('outbound'), leg('return')];
+}
+
+/** 往返大交通合计（元） */
+export function intercityTotal(legs: IntercityLeg[] | undefined): number {
+  return (legs ?? []).reduce((s, l) => s + (l.totalCost || 0), 0);
+}
+
+/* ------------------------------------------------------------------ */
 /* Route 兜底：产出最小可用 RoutePlan                                  */
 /* ------------------------------------------------------------------ */
 
@@ -208,6 +378,8 @@ export function buildFallbackRoute(profile: TripProfile): RoutePlan {
     days,
     routes,
     transportPreference: transportPreference(profile),
+    // 往返大交通：出发地缺失时为空数组，不影响城内路线
+    intercity: estimateIntercity(profile),
   };
 }
 
@@ -301,9 +473,19 @@ export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
   const transportEst = days * 60;
   const reserve = Math.round((lodging + dining + tickets) * 0.1);
 
-  const estimatedTotal = Math.round(lodging + dining + tickets + transportEst + shopping + reserve);
+  // 往返大交通：一次性大额支出，必须计入估算总额，否则「超支守卫」会漏判
+  const intercity = intercityTotal(estimateIntercity(profile));
+
+  const estimatedTotal = Math.round(
+    lodging + dining + tickets + transportEst + shopping + reserve + intercity,
+  );
   const totalBudget = profile.budget > 0 ? profile.budget : Math.max(estimatedTotal, 500);
   const overBudget = profile.budget > 0 && estimatedTotal > profile.budget;
+
+  // 大交通是刚性成本：先从总预算里全额切出来，剩下的钱才参与按类目分摊。
+  // 若总预算连大交通都不够，则大交通吃满预算、其余归零，并由 overBudget 提示。
+  const intercityAmount = Math.min(intercity, totalBudget);
+  const rest = Math.max(0, totalBudget - intercityAmount);
 
   const categoryShares: Array<{
     category: BudgetPlan['allocated'][number]['category'];
@@ -317,22 +499,27 @@ export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
     { category: 'reserve', amount: reserve },
   ];
 
-  // 按总预算等比缩放，保证总和 = 总额（取整漂移并入备用金）
+  // 其余类目按剩余预算等比缩放，保证「大交通 + 其余 = 总额」
   const shareSum = categoryShares.reduce((s, c) => s + c.amount, 0);
-  const scale = shareSum > 0 ? totalBudget / shareSum : 1;
+  const scale = shareSum > 0 ? rest / shareSum : 1;
   const allocAmounts = categoryShares.map((c) => Math.round(c.amount * scale));
-  const drift = totalBudget - allocAmounts.reduce((s, a) => s + a, 0);
+  const drift = rest - allocAmounts.reduce((s, a) => s + a, 0);
   const reserveIdx = allocAmounts.length - 1;
   if (drift !== 0) allocAmounts[reserveIdx] = Math.max(0, (allocAmounts[reserveIdx] ?? 0) + drift);
-  const allocated = categoryShares.map((c, i) => ({
-    category: c.category,
-    amount: allocAmounts[i] ?? 0,
-    percent: Math.round(((allocAmounts[i] ?? 0) / Math.max(totalBudget, 1)) * 100),
+
+  const rows: Array<{ category: BudgetPlan['allocated'][number]['category']; amount: number }> = [
+    ...(intercityAmount > 0 ? [{ category: 'intercity' as const, amount: intercityAmount }] : []),
+    ...categoryShares.map((c, i) => ({ category: c.category, amount: allocAmounts[i] ?? 0 })),
+  ];
+  const allocated = rows.map((r) => ({
+    category: r.category,
+    amount: r.amount,
+    percent: Math.round((r.amount / Math.max(totalBudget, 1)) * 100),
   }));
 
   const byDay = Array.from({ length: days }, (_, i) => ({
     day: i + 1,
-    spent: Math.round(totalBudget / days),
+    spent: Math.round(rest / days),
   }));
 
   const suggestions: string[] = [];
@@ -340,6 +527,12 @@ export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
     const comfortRate =
       profile.preferences.accommodationLevel === 'luxury' ? k.perNight.comfort : rate;
     suggestions.push(`建议将豪华住宿降为舒适档，每晚可省 ${rate - comfortRate} 元`);
+    if (intercity > 0 && totalBudget > 0 && intercity / totalBudget > 0.4) {
+      suggestions.push(
+        `往返大交通 ¥${intercity} 已占总预算 ${Math.round((intercity / totalBudget) * 100)}%，` +
+          '建议改高铁二等座/错峰航班，或缩短行程天数',
+      );
+    }
     suggestions.push('长途景点建议改乘公共交通以压缩交通预算');
     suggestions.push('购物类支出优选保留备用金，遇超支优先砍购物');
   } else if (profile.budget > 0) {
@@ -353,5 +546,6 @@ export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
     byDay,
     overBudget,
     suggestions,
+    intercityCost: intercity,
   };
 }

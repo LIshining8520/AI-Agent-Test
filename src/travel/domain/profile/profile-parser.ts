@@ -21,11 +21,14 @@ import type { LlmClient } from '../../shared/llm';
 import {
   extractDestinationFromText,
   normalizeDestination,
+  resolveCity,
   splitList,
 } from '../travel-knowledge';
 
 /** LLM 结构化输出的宽松中间形态（字段均可选，此后归一化进 TripProfile） */
 interface RawProfile {
+  /** 出发地（可空：未提及时不做大交通估算） */
+  origin?: string;
   destination?: string;
   days?: number;
   budget?: number;
@@ -84,9 +87,40 @@ function guessBudget(text: string): number | undefined {
   return undefined;
 }
 
-/** 规则提取：目的地 + 天数 + 预算 + 偏好粗抛（LLM 不可用时唯一的信息来源） */
+/** 中文数字 → 阿拉伯数字（「一家三口」的「三」） */
+const CN_NUMBER: Readonly<Record<string, number>> = {
+  一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
+  六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+};
+
+/** 从原文认同行总人数：「一家三口」「我们4个人」「两人同行」 */
+function guessPartySize(text: string): number | undefined {
+  // 只认「口/口人/个人/人同行」这类明确说法，避免把「5 天」「8000 元」误当人数
+  const m = text.match(/([一二两三四五六七八九十]|\d{1,2})\s*(?:口人|口|个人|人同行)/);
+  if (!m) return undefined;
+  const n = CN_NUMBER[m[1]!] ?? Number(m[1]);
+  return Number.isFinite(n) && n >= 1 && n <= 10 ? n : undefined;
+}
+
+/** 从原文兜底：出发地（「从杭州出发」「北京到云南」「我在上海」） */
+function guessOrigin(text: string): string | undefined {
+  const m =
+    text.match(/从\s*([\u4e00-\u9fa5]{2,6})\s*(?:出发|启程|飞|坐|乘)/) ||
+    text.match(/由\s*([\u4e00-\u9fa5]{2,6})\s*(?:出发|启程)/) ||
+    text.match(/从\s*([\u4e00-\u9fa5]{2,6})\s*(?:到|去|飞往)/) ||
+    text.match(/始发地[：:\s]*([\u4e00-\u9fa5]{2,6})/) ||
+    text.match(/我在\s*([\u4e00-\u9fa5]{2,6})/);
+  if (!m) return undefined;
+  const raw = (m[1] ?? '').trim();
+  if (!raw) return undefined;
+  // 能对上坐标表就收敛成规范城市名，否则原样保留（后续估算时自然失效，不会瞎编）
+  return resolveCity(raw) ?? raw;
+}
+
+/** 规则提取：出发地 + 目的地 + 天数 + 预算 + 偏好粗抛（LLM 不可用时唯一的信息来源） */
 function ruleExtract(text: string): RawProfile {
   const out: RawProfile = {};
+  out.origin = guessOrigin(text);
   out.destination = extractDestinationFromText(text)?.key;
   out.days = guessDays(text);
   out.budget = guessBudget(text);
@@ -117,6 +151,16 @@ function ruleExtract(text: string): RawProfile {
   if (/爸妈|父母|老人|长辈|带妈|带爸/.test(text)) companions.push('elder');
   if (/孩子|小孩|儿童|带娃/.test(text)) companions.push('child');
   if (/婴儿|宝宝/.test(text)) companions.push('infant');
+
+  // 明确人数：「一家三口」「我们 4 个人」。
+  // 大交通按人头计价，只按关键词判 1 个成人会让机票钱少算一大半，所以这里必须数人头。
+  const totalPeople = guessPartySize(text);
+  if (totalPeople) {
+    const others = companions.filter((c) => c !== 'adult');
+    const adults = Math.max(1, totalPeople - others.length);
+    companions.length = 0;
+    companions.push(...Array.from({ length: adults }, () => 'adult'), ...others);
+  }
   if (companions.length > 0) out.companions = companions;
 
   return out;
@@ -178,7 +222,8 @@ export class ProfileParser {
     try {
       const sys = [
         '你是资深旅游规划师。把用户的自然语言需求抽取成结构化字段，严格输出 JSON，',
-        '字段同输出 schema：destination(string 目的地规范名)、days(number 行程天数)、',
+        '字段同输出 schema：origin(string 出发地/始发城市，用户没说填 null)、',
+        'destination(string 目的地规范名)、days(number 行程天数)、',
         'budget(number 单位元)、companions(string[]: adult/elder/child/infant)、',
         'pace(relaxed|moderate|intensive)、interests(string[])、',
         'accommodationLevel(economy|comfort|luxury)、diet(string[] 过敏/禁忌)、',
@@ -208,6 +253,7 @@ export class ProfileParser {
     const budgetNum = typeof d.budget === 'number' ? d.budget : Number(d.budget);
     return {
       ...d,
+      origin: typeof d.origin === 'string' ? d.origin.trim() : undefined,
       days: Number.isFinite(daysNum) && daysNum > 0 ? Math.min(daysNum, 30) : undefined,
       budget: Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : undefined,
       interests: Array.isArray(d.interests) ? d.interests : undefined,
@@ -226,6 +272,8 @@ export class ProfileParser {
   private mergeProfile(f: RawProfile): TripProfile {
     const base = defaultProfile();
     return {
+      // 出发地：能对上坐标表就归一（「杭州市」→「杭州」），对不上就原样留着
+      origin: resolveCity(f.origin) ?? f.origin ?? base.origin,
       // 目的地统一归一为规范中文名（LLM 可能返回英文/别名，如 Beijing → 北京）
       destination: normalizeDestination(f.destination) || base.destination,
       days: f.days ?? base.days,

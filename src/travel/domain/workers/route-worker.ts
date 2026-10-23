@@ -6,7 +6,7 @@
  */
 import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { RoutePlan, TripProfile } from '../../shared/travel-types';
-import { buildFallbackRoute, findKnowledge } from '../travel-knowledge';
+import { buildFallbackRoute, estimateIntercity, findKnowledge } from '../travel-knowledge';
 import { BaseWorker, clampDay, type WorkerContext } from './worker';
 
 interface RawRouteInput {
@@ -32,19 +32,25 @@ export class RouteWorker extends BaseWorker<RoutePlan> {
 
   buildPrompt(profile: TripProfile, ctx: WorkerContext): GenerateRequest {
     const k = findKnowledge(profile.destination);
+    const intercity = estimateIntercity(profile);
+    const intercityHint =
+      intercity.length > 0
+        ? `往返大交通（系统已按距离估算，勿自行编造价）：${intercity[0]!.mode} ${intercity[0]!.from}→${intercity[0]!.to}`
+        : '未提供出发地，无往返大交通';
     return {
       role: 'ROUTE',
       system: [
         '你是旅游路线的公共交通规划师。依据画像输出路线 JSON：',
         '{destination, days, routes:[{day,origin,to,transport,estDurationMin,estCost}], transportPreference}。',
         `参考主数据：${k ? k.attractions.join('、') : '按用户指定目的地'}；`,
-        'transport∈walk|subway|bus|taxi|car，城内用 subway，跨城用 taxi/car。',
+        'routes 只写城内/景点间，transport∈walk|subway|bus|taxi|car，城内用 subway，跨城用 taxi/car。',
         '只输出纯 JSON。',
       ].join(''),
       user: [
-        `目的地：${profile.destination}；天数：${profile.days}；`,
+        `出发地：${profile.origin || '未提供'}；目的地：${profile.destination}；天数：${profile.days}；`,
         `同行：${profile.companions.join(',')}；节奏：${profile.preferences.pace}；`,
-        `预算：${profile.budget}元；必去：${profile.constraints.mustVisit.join(',')}；规避：${profile.constraints.avoid.join(',')}`,
+        `预算：${profile.budget}元；必去：${profile.constraints.mustVisit.join(',')}；规避：${profile.constraints.avoid.join(',')}。`,
+        intercityHint,
       ].join(''),
       temperature: ctx.temperature ?? 0.2,
     };
@@ -53,6 +59,7 @@ export class RouteWorker extends BaseWorker<RoutePlan> {
   normalize(d: unknown, profile: TripProfile): RoutePlan {
     const raw = (d ?? {}) as RawRouteInput;
     const days = Math.max(profile.days, 1);
+    const fb = this.fallback(profile);
     const routes = (raw.routes ?? []).map((r, i) => ({
       // day 收敛到 [1, days]：路线侧此前不收敛，而行程侧按 length 已收敛 —— 两者不对称，
       // LLM 偶发越界 day 会让时序校验直接判否（表现为「行程合理性」失败，
@@ -68,8 +75,16 @@ export class RouteWorker extends BaseWorker<RoutePlan> {
       destination:
         raw.destination || profile.destination || findKnowledge(profile.destination)?.key || '',
       days,
-      routes: routes.length > 0 ? routes : this.fallback(profile).routes,
-      transportPreference: raw.transportPreference ?? this.fallback(profile).transportPreference,
+      routes: routes.length > 0 ? routes : fb.routes,
+      transportPreference: raw.transportPreference ?? fb.transportPreference,
+      /**
+       * 大交通**不由 LLM 产出**，一律走 `estimateIntercity`（纯函数）。
+       *
+       * 原因是并行结构下的硬约束：预算子链与路线子链同一 superstep 跑，拿不到彼此的产物。
+       * 如果两边各自估算，路线说「杭州→昆明 ¥1200」、预算按 ¥975 算，收口的
+       * 「大交通计入预算」质检必然失败 —— 实测就是这么炸的。用同一个纯函数才能保证对账。
+       */
+      intercity: estimateIntercity(profile),
     };
   }
 

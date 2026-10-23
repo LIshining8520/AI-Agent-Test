@@ -10,6 +10,7 @@ import { travelGraph, clarifyPrompt, type TravelState, type CheckItem } from '..
 import { getTravelRuntime } from '../application/travel-runtime';
 import { profileCompleteness, COMPANION_LABELS } from '../shared/trip-profile';
 import type { BudgetPlan, ItineraryPlan, RoutePlan } from '../shared/travel-types';
+import { INTERCITY_MODE_LABEL } from '../domain/travel-knowledge';
 import { EMOJI } from '../../emotion/agentEmotion';
 import './travel.css';
 
@@ -34,14 +35,15 @@ const NODE_EMOJI: Record<string, string> = {
 };
 
 const EXAMPLES = [
-  '一家三口去云南玩 5 天，预算 8000，想看自然风光，吃住舒适就行',
+  '从杭州出发，一家三口去云南玩 5 天，预算 15000，想看自然风光，吃住舒适就行',
   '去云南玩',
   '预算 1000 但要住豪华酒店，去北京 3 天',
 ];
 
 const CATEGORY_LABEL: Record<BudgetPlan['allocated'][number]['category'], string> = {
+  intercity: '大交通',
   accommodation: '住宿',
-  transport: '交通',
+  transport: '市内交通',
   food: '餐饮',
   attraction: '门票',
   shopping: '购物',
@@ -213,6 +215,7 @@ function TravelPlannerPage({ onStage }: Props) {
             </span>
           </div>
           <div className="tp-grid">
+            <Field label="出发地" value={profile.origin || '—'} />
             <Field label="目的地" value={profile.destination || '—'} />
             <Field label="天数" value={profile.days > 0 ? `${profile.days} 天` : '—'} />
             <Field label="预算" value={profile.budget > 0 ? `¥${profile.budget}` : '—'} />
@@ -248,17 +251,39 @@ function TravelPlannerPage({ onStage }: Props) {
         <div className="tp-chains">
           <ChainCard title="② 路线子链" kind="route" source={snap.sources?.route} ready={!!snap.route}>
             {snap.route && (
-              <ul className="tp-list">
-                {snap.route.routes.map((r) => (
-                  <li key={`${r.day}-${r.to}`}>
-                    <b>D{r.day}</b> {r.origin ?? '—'} → {r.to}
-                    <span className="tp-sub">
-                      {TRANSPORT_LABEL[r.transport]} · {r.estDurationMin}min
-                      {r.estCost != null ? ` · ¥${r.estCost}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {snap.route.intercity && snap.route.intercity.length > 0 && (
+                  <div className="tp-intercity">
+                    <div className="tp-intercity-head">
+                      往返大交通 · 合计 ¥
+                      {snap.route.intercity.reduce((s, l) => s + l.totalCost, 0)}
+                    </div>
+                    <ul className="tp-list">
+                      {snap.route.intercity.map((l) => (
+                        <li key={l.direction}>
+                          <b>{l.direction === 'outbound' ? '去程' : '返程'}</b> {l.from} → {l.to}
+                          <span className="tp-sub">
+                            {INTERCITY_MODE_LABEL[l.mode]} ·{' '}
+                            {(l.estDurationMin / 60).toFixed(1)}h · ¥{l.unitCost}/人 · 本段 ¥
+                            {l.totalCost}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <ul className="tp-list">
+                  {snap.route.routes.map((r) => (
+                    <li key={`${r.day}-${r.to}`}>
+                      <b>D{r.day}</b> {r.origin ?? '—'} → {r.to}
+                      <span className="tp-sub">
+                        {TRANSPORT_LABEL[r.transport]} · {r.estDurationMin}min
+                        {r.estCost != null ? ` · ¥${r.estCost}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </ChainCard>
 
@@ -300,6 +325,16 @@ function TravelPlannerPage({ onStage }: Props) {
                   总额 ¥{snap.budget.totalBudget} ·{' '}
                   {snap.budget.overBudget ? '超支，已给替换建议' : '估算未超预算'}
                 </p>
+                {(snap.budget.intercityCost ?? 0) > 0 && (
+                  <p className="tp-note">
+                    其中往返大交通 ¥{snap.budget.intercityCost}，占总预算{' '}
+                    {Math.round(
+                      ((snap.budget.intercityCost ?? 0) / Math.max(snap.budget.totalBudget, 1)) *
+                        100,
+                    )}
+                    %（已从总额中先行切出，其余类目按剩余预算分摊）
+                  </p>
+                )}
                 {snap.budget.suggestions.length > 0 && (
                   <ul className="tp-list">
                     {snap.budget.suggestions.map((s) => (

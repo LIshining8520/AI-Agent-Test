@@ -127,10 +127,11 @@ export type TravelState = typeof TravelStateAnnotation.State;
 
 /** 把画像确定性拆成三条计划（有效计划数恒为 3，过滤不了任何一条） */
 export function sanitizePlan(profile: TripProfile): Assignment[] {
+  const from = profile.origin ? `从 ${profile.origin} 到 ` : '';
   return [
     {
       kind: 'route',
-      task: `为 ${profile.destination} ${profile.days} 天规划城际/景点间路线，节奏 ${profile.preferences.pace}`,
+      task: `${from}${profile.destination} ${profile.days} 天规划往返大交通与城际/景点间路线，节奏 ${profile.preferences.pace}`,
     },
     {
       kind: 'itinerary',
@@ -138,7 +139,7 @@ export function sanitizePlan(profile: TripProfile): Assignment[] {
     },
     {
       kind: 'budget',
-      task: `把 ${profile.budget} 元按类别分摊到 ${profile.days} 天，超支给等价替换建议`,
+      task: `把 ${profile.budget} 元按类别分摊到 ${profile.days} 天（含往返大交通），超支给等价替换建议`,
     },
   ];
 }
@@ -155,6 +156,9 @@ function runChecks(
   const emptyDays = (itinerary?.planByDay ?? []).filter((d) => d.activities.length === 0).length;
   const routeDaysOk = (route?.routes ?? []).every((r) => r.day >= 1 && r.day <= days);
   const itineraryDaysOk = (itinerary?.planByDay ?? []).every((d) => d.day >= 1 && d.day <= days);
+  // 大交通：路线侧算出来的往返总额，必须原样出现在预算里（否则「加到预算」就是假的）
+  const routeIntercity = (route?.intercity ?? []).reduce((s, l) => s + (l.totalCost || 0), 0);
+  const budgetIntercity = budget?.intercityCost ?? 0;
 
   return [
     {
@@ -188,6 +192,15 @@ function runChecks(
       detail: `分配合计 ${allocatedSum} 元 vs 总额 ${budget?.totalBudget ?? '-'} 元`,
     },
     {
+      id: 'intercity',
+      label: '大交通计入预算',
+      ok: !!route && routeIntercity === budgetIntercity,
+      detail:
+        routeIntercity > 0
+          ? `路线侧往返 ${routeIntercity} 元 / 预算内 ${budgetIntercity} 元`
+          : '未提供出发地，跳过往返大交通',
+    },
+    {
       id: 'over-budget',
       label: '超支守卫',
       ok: !!budget && (!budget.overBudget || budget.suggestions.length > 0),
@@ -208,8 +221,9 @@ function buildSummary(
 ): string {
   const completeness = Math.round(profileCompleteness(profile) * 100);
   const passed = checks.filter((c) => c.ok).length;
+  const where = profile.origin ? `${profile.origin} → ${profile.destination}` : profile.destination;
   const lines = [
-    `${profile.destination} · ${profile.days} 天 · 预算 ${profile.budget} 元 · 画像完整度 ${completeness}%`,
+    `${where} · ${profile.days} 天 · 预算 ${profile.budget} 元 · 画像完整度 ${completeness}%`,
     `质检 ${passed}/${checks.length} 项通过${errors.length > 0 ? `，降级/异常 ${errors.length} 条` : ''}`,
   ];
   if (budget) {
@@ -218,6 +232,9 @@ function buildSummary(
         ? `预算结论：**超支**，已给 ${budget.suggestions.length} 条等价替换建议`
         : '预算结论：估算未超总预算，富余可并入备用金',
     );
+  }
+  if (budget?.intercityCost && budget.intercityCost > 0) {
+    lines.push(`往返大交通：¥${budget.intercityCost} 已计入预算（${where}）`);
   }
   lines.push(`本次 token ${cost.totalTokens}，估算成本 $${cost.totalCostUsd.toFixed(4)}`);
   return lines.join('\n');

@@ -11,10 +11,16 @@
  */
 import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { BudgetPlan, TripProfile } from '../../shared/travel-types';
-import { buildFallbackBudget, findKnowledge } from '../travel-knowledge';
+import {
+  buildFallbackBudget,
+  estimateIntercity,
+  findKnowledge,
+  intercityTotal,
+} from '../travel-knowledge';
 import { BaseWorker, type WorkerContext } from './worker';
 
 const CATEGORIES: Array<BudgetPlan['allocated'][number]['category']> = [
+  'intercity',
   'accommodation',
   'transport',
   'food',
@@ -67,18 +73,21 @@ export class BudgetWorker extends BaseWorker<BudgetPlan> {
 
   buildPrompt(profile: TripProfile, ctx: WorkerContext): GenerateRequest {
     const k = findKnowledge(profile.destination);
+    const intercity = intercityTotal(estimateIntercity(profile));
     return {
       role: 'BUDGET',
       system: [
         '你是旅游费用规划师。产出预算 JSON：',
         '{destination, totalBudget, allocated:[{category,amount,percent}], byDay:[{day,spent}], overBudget:boolean, suggestions:string[]}。',
-        'category∈accommodation|transport|food|attraction|shopping|reserve。',
+        'category∈intercity|accommodation|transport|food|attraction|shopping|reserve。',
+        'intercity 是往返大交通（出发地⇄目的地），transport 仅指城内交通，两者不要混算。',
         '总预算需保持 allocated 合计=totalBudget，超支时给等价替换建议。',
         '只输出纯 JSON。',
       ].join(''),
       user: [
-        `目的地：${profile.destination}；${profile.days}天；总预算 ${profile.budget}元；`,
-        `同行：${profile.companions.join('、')}；住宿档：${profile.preferences.accommodationLevel}；节奏：${profile.preferences.pace}`,
+        `出发地：${profile.origin || '未提供'}；目的地：${profile.destination}；${profile.days}天；总预算 ${profile.budget}元；`,
+        `同行：${profile.companions.join('、')}；住宿档：${profile.preferences.accommodationLevel}；节奏：${profile.preferences.pace}；`,
+        `往返大交通估算：${intercity > 0 ? `${intercity}元` : '无（未提供出发地）'}；`,
         `主数据参考房价（每晚）：${k ? JSON.stringify(k.perNight) : ''}；美食：${k ? k.foods.join('、') : ''}`,
       ].join(''),
       temperature: ctx.temperature ?? 0.2,
@@ -90,23 +99,49 @@ export class BudgetWorker extends BaseWorker<BudgetPlan> {
     const fb = this.fallback(profile);
     const total = Math.max(1, raw.totalBudget ?? profile.budget ?? fb.totalBudget);
 
-    // 1) allocated：优先 LLM，空则用兜底；随后做合规归一化（保证合计 = 总预算）
-    const rawAlloc =
-      (raw.allocated ?? []).length > 0
-        ? (raw.allocated ?? []).map((a) => ({
-            category: CATEGORIES.includes(a.category as never) ? a.category : 'reserve',
-            amount: Math.max(0, a.amount ?? 0),
-            percent: a.percent ?? 0,
-          }))
-        : fb.allocated;
-    const allocated = clampAllocatedToBudget(rawAlloc, total);
+    // 大交通：以「出发地→目的地」的经验估算为准。理由有二：
+    //  1) LLM 拿不到实时票价，常整项漏掉；
+    //  2) 它是刚性支出，不能参与后面的等比缩放被压没。
+    const intercity = intercityTotal(estimateIntercity(profile));
+    const intercityAmount = Math.min(intercity, total);
+    const rest = Math.max(0, total - intercityAmount);
+
+    // 其余类目：优先 LLM，但剔除它自己加的 intercity 行（避免重复计算），
+    // 再按「扣除大交通后的剩余预算」做合规归一化。
+    const rawAlloc = (
+      (raw.allocated ?? []).length > 0 ? (raw.allocated ?? []) : fb.allocated
+    )
+      .filter((a) => a.category !== 'intercity')
+      .map((a) => ({
+        category: CATEGORIES.includes(a.category as never) ? a.category : 'reserve',
+        amount: Math.max(0, a.amount ?? 0),
+        percent: a.percent ?? 0,
+      }));
+    const allocatedRest = clampAllocatedToBudget(rawAlloc, rest);
+
+    // 百分比一律按「总预算」算：clamp 内部是按剩余预算归一的，
+    // 直接拿它的 percent 会得到一套加起来 119% 的假占比。
+    const withPercent = (rows: BudgetPlan['allocated']): BudgetPlan['allocated'] =>
+      rows.map((r) => ({
+        ...r,
+        percent: Math.round((r.amount / Math.max(total, 1)) * 100),
+      }));
+
+    const allocated: BudgetPlan['allocated'] = withPercent([
+      ...(intercityAmount > 0
+        ? [{ category: 'intercity' as const, amount: intercityAmount, percent: 0 }]
+        : []),
+      ...allocatedRest,
+    ]);
+
     const byDay =
       Array.isArray(raw.byDay) && raw.byDay.length > 0
         ? raw.byDay.map((x) => ({ day: x.day, spent: Math.max(0, x.spent) }))
         : fb.byDay;
 
-    // 2) overBudget：以兜底对主数据的估算为准（LLM 主观判断不可靠）；suggestions 空时给兜底建议
-    const overBudget = raw.overBudget ?? fb.overBudget;
+    // 2) overBudget：兜底估算判超支就不许被 LLM 一句「没超」推翻 ——
+    //    兜底口径已包含大交通，而 LLM 看不到票价。
+    const overBudget = fb.overBudget || raw.overBudget === true;
     const suggestions =
       (raw.suggestions ?? []).length > 0 ? (raw.suggestions as string[]) : fb.suggestions;
 
@@ -117,6 +152,7 @@ export class BudgetWorker extends BaseWorker<BudgetPlan> {
       byDay,
       overBudget,
       suggestions,
+      intercityCost: intercityAmount,
     };
   }
 

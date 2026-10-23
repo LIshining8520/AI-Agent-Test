@@ -29,6 +29,7 @@ export const REQUIRED_FIELDS = ['destination', 'days', 'budget'] as const;
  * 直接 join 出来会读作「请补充：destination、days、budget」。本表只做渲染前翻译，不改契约。
  */
 export const FIELD_LABELS: Readonly<Record<string, string>> = {
+  origin: '出发地',
   destination: '目的地',
   days: '天数',
   budget: '预算',
@@ -51,6 +52,7 @@ export function formatMissingFields(missing: readonly string[] | undefined): str
 export function defaultProfile(): TripProfile {
   return {
     destination: '',
+    origin: '',
     days: 0,
     budget: 0,
     companions: ['adult'],

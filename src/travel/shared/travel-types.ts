@@ -16,6 +16,8 @@ export type Companion = 'adult' | 'elder' | 'child' | 'infant';
  */
 export interface TripProfile {
   destination: string;
+  /** 出发地/始发地（可空：用户没说时不做大交通估算，不阻塞编排） */
+  origin: string;
   days: number;
   budget: number; // 总预算（元）
   companions: Companion[];
@@ -53,6 +55,28 @@ export interface DayPlan {
   note?: string;
 }
 
+/** 城际大交通方式（出发地 ⇄ 目的地） */
+export type IntercityMode = 'flight' | 'high-speed-rail' | 'train' | 'bus' | 'drive';
+
+/**
+ * 一段城际大交通（出发地 ⇄ 目的地）。
+ *
+ * 与 `routes`（城内/景点间）分开建模：大交通是**一次性、大额、不可压缩**的成本，
+ * 而城内交通是按天摊销的小额支出 —— 混在一起会让预算守卫失准。
+ */
+export interface IntercityLeg {
+  direction: 'outbound' | 'return';
+  from: string;
+  to: string;
+  mode: IntercityMode;
+  estDurationMin: number;
+  /** 单人票价（元） */
+  unitCost: number;
+  /** 该段总价 = 单人票价 × 计费人数（儿童半价、婴儿 0.1 折算） */
+  totalCost: number;
+  note?: string;
+}
+
 /** 路线计划：三子链之一 */
 export interface RoutePlan {
   destination: string;
@@ -66,6 +90,8 @@ export interface RoutePlan {
     estCost?: number;
   }>;
   transportPreference?: 'public' | 'private' | 'walk';
+  /** 往返大交通（出发地 ⇄ 目的地）；未提供出发地时为空 */
+  intercity?: IntercityLeg[];
 }
 
 /** 行程计划：三子链之二（日粒度编排） */
@@ -82,13 +108,22 @@ export interface BudgetPlan {
   destination: string;
   totalBudget: number;
   allocated: Array<{
-    category: 'accommodation' | 'transport' | 'food' | 'attraction' | 'shopping' | 'reserve';
+    category:
+      | 'intercity'
+      | 'accommodation'
+      | 'transport'
+      | 'food'
+      | 'attraction'
+      | 'shopping'
+      | 'reserve';
     amount: number;
     percent: number;
   }>;
   byDay: Array<{ day: number; spent: number }>;
   overBudget: boolean;
   suggestions: string[]; // 超支时的等价替换建议
+  /** 往返大交通合计（元），便于页面直接展示与质检核对 */
+  intercityCost?: number;
 }
 
 /** 编排收口的完整规划产物 */

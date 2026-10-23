@@ -121,8 +121,14 @@ async function viaCommonsSearch(name: string, width: number): Promise<string | n
   return null;
 }
 
-async function resolveImage(name: string, width: number): Promise<string | null> {
-  const key = `${name}|${width}`;
+async function resolveImage(
+  name: string,
+  width: number,
+  retry = false,
+): Promise<string | null> {
+  // 带 retry 的请求走独立缓存键：绕过上一次的「无图」负缓存，
+  // 否则某次网络抖动会让这个景点在接下来 10 分钟里一直是占位块。
+  const key = `${name}|${width}|${retry ? 'r' : ''}`;
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return hit.url;
 
@@ -152,13 +158,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const name = firstParam(req.query.q).trim().slice(0, 40);
   const width = Math.min(800, Math.max(120, Number(firstParam(req.query.w)) || 360));
+  const retry = firstParam(req.query.r) === '1';
   if (!name) {
     res.status(400).setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify({ error: 'missing q' }));
     return;
   }
 
-  const src = await resolveImage(name, width);
+  const src = await resolveImage(name, width, retry);
   if (!src) {
     // 短缓存：避免反复重试把上游打爆，但过一阵又能重新解析
     res.setHeader('Cache-Control', 'public, max-age=600');

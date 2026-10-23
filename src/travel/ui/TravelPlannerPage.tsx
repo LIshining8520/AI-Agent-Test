@@ -14,6 +14,7 @@ import { INTERCITY_MODE_LABEL } from '../domain/travel-knowledge';
 import { EMOJI } from '../../emotion/agentEmotion';
 import './travel.css';
 
+
 /** 节点 → 展示名（流水线徽章） */
 const NODE_LABEL: Record<string, string> = {
   parse: '解析画像',
@@ -83,10 +84,9 @@ function TravelPlannerPage({ onStage }: Props) {
   const [trace, setTrace] = useState<string[]>([]);
   const [snap, setSnap] = useState<Snapshot>({});
   const moodTimer = useRef<number | null>(null);
-
+console.log('TravelPlannerPage render', {  snap });
   const runtime = getTravelRuntime();
   const degraded = runtime.forceFallback;
-
   const run = useCallback(async () => {
     if (!input.trim() || running) return;
     if (moodTimer.current) window.clearTimeout(moodTimer.current);
@@ -147,6 +147,8 @@ function TravelPlannerPage({ onStage }: Props) {
     [profile],
   );
   const missing = snap.profileResult?.missing ?? [];
+
+  
 
   return (
     <div className="tp">
@@ -438,8 +440,9 @@ function Field({ label, value }: { label: string; value: string }) {
  * 两种情况都不该让行程卡片出现一个个破图标。
  */
 function Thumb({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
+  // 0=首次加载 1=带 r=1 重试中 2=确实没有图
+  const [phase, setPhase] = useState(0);
+  if (phase === 2) {
     return (
       <span className="tp-thumb tp-thumb-empty" title={alt}>
         {alt.slice(0, 2)}
@@ -448,7 +451,19 @@ function Thumb({ src, alt }: { src: string; alt: string }) {
   }
   return (
     <span className="tp-thumb" title={alt}>
-      <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />
+      <img
+        // phase 变化要换 key 才会重新发起请求
+        key={phase}
+        src={phase === 0 ? src : `${src}&r=1`}
+        alt={alt}
+        loading="lazy"
+        onError={() => {
+          // 服务端可能刚回了「暂无图」的负缓存，隔一会儿带 r=1 再要一次；
+          // 第二次还失败才认为是真的没有图。
+          if (phase === 0) window.setTimeout(() => setPhase(1), 1500);
+          else setPhase(2);
+        }}
+      />
     </span>
   );
 }

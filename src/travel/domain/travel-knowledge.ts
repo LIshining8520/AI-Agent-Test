@@ -18,6 +18,7 @@ import type {
   TripProfile,
   BudgetPlan,
 } from '../shared/travel-types';
+import { attractionImagePath } from '../shared/attraction-image';
 
 export type Pace = TripProfile['preferences']['pace'];
 export type AccommodationLevel = TripProfile['preferences']['accommodationLevel'];
@@ -582,15 +583,23 @@ export function buildFallbackItinerary(profile: TripProfile): ItineraryPlan {
     const morning = chosen[from % (chosen.length || 1)];
     const showAfternoon = pace !== 'relaxed' && chosen.length > 1;
     const first = morning ?? '城市漫步';
+    const second = chosen[(from + 1) % (chosen.length || 1)] as string;
     const activities = [
-      { name: first, type: 'attraction' as const, durationHours: 3, location: k.cities[0] },
+      {
+        name: first,
+        type: 'attraction' as const,
+        durationHours: 3,
+        location: k.cities[0],
+        imageUrl: attractionImagePath(first),
+      },
       ...(showAfternoon
         ? [
             {
-              name: chosen[(from + 1) % (chosen.length || 1)] as string,
+              name: second,
               type: 'attraction' as const,
               durationHours: 2.5,
               location: k.cities[0],
+              imageUrl: attractionImagePath(second),
             },
           ]
         : []),

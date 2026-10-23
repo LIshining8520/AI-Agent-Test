@@ -42,6 +42,8 @@ export interface Activity {
   cost?: number; // 预估费用（元）
   location?: string;
   poiId?: string; // 地图 POI 标识（课 11 挂载后填充）
+  /** 配图地址（仅景点有；走本站 /api/image 代理，懒加载） */
+  imageUrl?: string;
 }
 
 /** 单日行程单元 */

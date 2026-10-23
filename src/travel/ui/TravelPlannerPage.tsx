@@ -306,12 +306,23 @@ function TravelPlannerPage({ onStage }: Props) {
           >
             {snap.itinerary && (
               <ul className="tp-list">
-                {snap.itinerary.planByDay.map((d) => (
-                  <li key={d.day}>
-                    <b>D{d.day}</b> {d.activities.map((a) => a.name).join(' / ')}
-                    {d.note && <span className="tp-sub">{d.note}</span>}
-                  </li>
-                ))}
+                {snap.itinerary.planByDay.map((d) => {
+                  // 只有景点有图，一天最多两张（卡片窄，多了挤成一片）
+                  const shots = d.activities.filter((a) => a.imageUrl).slice(0, 2);
+                  return (
+                    <li key={d.day}>
+                      {shots.length > 0 && (
+                        <div className="tp-shots">
+                          {shots.map((a) => (
+                            <Thumb key={a.name} src={a.imageUrl!} alt={a.name} />
+                          ))}
+                        </div>
+                      )}
+                      <b>D{d.day}</b> {d.activities.map((a) => a.name).join(' / ')}
+                      {d.note && <span className="tp-sub">{d.note}</span>}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </ChainCard>
@@ -416,6 +427,29 @@ function Field({ label, value }: { label: string; value: string }) {
       <span className="tp-field-label">{label}</span>
       <span className="tp-field-value">{value}</span>
     </div>
+  );
+}
+
+/**
+ * 景点缩略图。
+ *
+ * 图是懒加载的，且**失败时退化成文字占位**而不是留白框：
+ * 一是图源里确实有小景点查不到图，二是本地 `vite dev` 没有 /api/image，
+ * 两种情况都不该让行程卡片出现一个个破图标。
+ */
+function Thumb({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span className="tp-thumb tp-thumb-empty" title={alt}>
+        {alt.slice(0, 2)}
+      </span>
+    );
+  }
+  return (
+    <span className="tp-thumb" title={alt}>
+      <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />
+    </span>
   );
 }
 

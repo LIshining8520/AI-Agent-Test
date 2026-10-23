@@ -11,6 +11,7 @@
  */
 import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { Activity, ItineraryPlan, TripProfile } from '../../shared/travel-types';
+import { attractionImagePath } from '../../shared/attraction-image';
 import { buildFallbackItinerary, findKnowledge } from '../travel-knowledge';
 import { BaseWorker, clampDay, type WorkerContext } from './worker';
 
@@ -166,6 +167,8 @@ export class ItineraryWorker extends BaseWorker<ItineraryPlan> {
       durationHours: Math.max(0.5, a.durationHours ?? 2),
       cost: a.cost,
       location: a.location,
+      // 只有景点配图：餐饮/住宿/休息配图既不准也没意义
+      imageUrl: type === 'attraction' ? attractionImagePath(name) : undefined,
     };
   }
 }

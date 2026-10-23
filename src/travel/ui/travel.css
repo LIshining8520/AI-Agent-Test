@@ -307,3 +307,24 @@
   font-size: 13px;
 }
 
+/* 出境手续提示：用警示色，避免和「大交通」信息块混淆 */
+.tp-entry {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 119, 6, 0.45);
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.tp-entry-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #d97706;
+  margin-bottom: 6px;
+}
+
+.tp-entry .tp-list li {
+  font-size: 13px;
+}
+

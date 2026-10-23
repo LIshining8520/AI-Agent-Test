@@ -117,11 +117,19 @@ function guessOrigin(text: string): string | undefined {
   return resolveCity(raw) ?? raw;
 }
 
+/** 从原文兜底：未收录的目的地（「去冰岛玩」「去清迈旅游」） */
+function guessUnknownDestination(text: string): string | undefined {
+  // 只认「去 X 玩/旅游/旅行/度假」这种明确句式，避免把「去吃饭」里的动词结构当地名
+  const m = text.match(/去\s*([\u4e00-\u9fa5]{2,6}?)\s*(?:玩|旅游|旅行|度假|自由行|跟团)/);
+  return m?.[1]?.trim() || undefined;
+}
+
 /** 规则提取：出发地 + 目的地 + 天数 + 预算 + 偏好粗抛（LLM 不可用时唯一的信息来源） */
 function ruleExtract(text: string): RawProfile {
   const out: RawProfile = {};
   out.origin = guessOrigin(text);
-  out.destination = extractDestinationFromText(text)?.key;
+  // 先查主数据（境内 7 个 + 境外 6 个），查不到再退到「去 X 玩」句式
+  out.destination = extractDestinationFromText(text)?.key ?? guessUnknownDestination(text);
   out.days = guessDays(text);
   out.budget = guessBudget(text);
 

@@ -36,6 +36,7 @@ const NODE_EMOJI: Record<string, string> = {
 
 const EXAMPLES = [
   '从杭州出发，一家三口去云南玩 5 天，预算 15000，想看自然风光，吃住舒适就行',
+  '从上海出发去日本玩 7 天，预算 20000，想吃好住好',
   '去云南玩',
   '预算 1000 但要住豪华酒店，去北京 3 天',
 ];
@@ -268,6 +269,16 @@ function TravelPlannerPage({ onStage }: Props) {
                             {l.totalCost}
                           </span>
                         </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {snap.route.entryNotes && snap.route.entryNotes.length > 0 && (
+                  <div className="tp-entry">
+                    <div className="tp-entry-head">出境手续 · 别忘了</div>
+                    <ul className="tp-list">
+                      {snap.route.entryNotes.map((n) => (
+                        <li key={n}>{n}</li>
                       ))}
                     </ul>
                   </div>

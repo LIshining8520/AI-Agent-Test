@@ -6,7 +6,7 @@
  */
 import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { RoutePlan, TripProfile } from '../../shared/travel-types';
-import { buildFallbackRoute, estimateIntercity, findKnowledge } from '../travel-knowledge';
+import { buildFallbackRoute, entryNotesOf, estimateIntercity, findKnowledge } from '../travel-knowledge';
 import { BaseWorker, clampDay, type WorkerContext } from './worker';
 
 interface RawRouteInput {
@@ -85,6 +85,8 @@ export class RouteWorker extends BaseWorker<RoutePlan> {
        * 「大交通计入预算」质检必然失败 —— 实测就是这么炸的。用同一个纯函数才能保证对账。
        */
       intercity: estimateIntercity(profile),
+      // 出境游的签证/入境提示：这不是路线本身，但漏了会让人到了机场才发现问题
+      entryNotes: entryNotesOf(profile.destination),
     };
   }
 

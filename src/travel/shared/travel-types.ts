@@ -92,6 +92,8 @@ export interface RoutePlan {
   transportPreference?: 'public' | 'private' | 'walk';
   /** 往返大交通（出发地 ⇄ 目的地）；未提供出发地时为空 */
   intercity?: IntercityLeg[];
+  /** 出境游的签证/入境手续提示（境内目的地为空） */
+  entryNotes?: string[];
 }
 
 /** 行程计划：三子链之二（日粒度编排） */

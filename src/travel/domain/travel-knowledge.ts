@@ -34,6 +34,14 @@ export interface DestinationKnowledge {
   attractions: string[];
   /** 当地美食 */
   foods: string[];
+  /** 境内 / 境外；缺省视为境内 */
+  region?: 'domestic' | 'overseas';
+  /** 境外目的地所属国家（展示用） */
+  country?: string;
+  /** 当地货币代码（仅境外） */
+  currency?: string;
+  /** 签证/入境手续提示（仅境外） */
+  entryNotes?: string[];
   /** 各住宿档位每晚均价（元） */
   perNight: Record<AccommodationLevel, number>;
   /** 交通提示（城际/市内） */
@@ -105,6 +113,96 @@ export const DESTINATIONS: DestinationKnowledge[] = [
     perNight: { economy: 180, comfort: 420, luxury: 950 },
     transferNotes: ['西湖周边步行+地铁', '千岛湖需高铁+船'],
   },
+
+  /* ---------------- 境外目的地（短途为主）----------------
+   * perNight / 餐饮口径统一折算成**人民币**：预算与画像都以元为单位，
+   * 混用本币会让「超支守卫」直接失效。当地货币只在 currency 里标注。 */
+  {
+    key: '日本',
+    region: 'overseas',
+    country: '日本',
+    currency: 'JPY',
+    aliases: ['日本', '东京', '大阪', '京都', '奈良', '北海道', '札幌', 'japan', 'tokyo', 'osaka', 'kyoto'],
+    cities: ['东京', '大阪', '京都'],
+    attractions: ['浅草寺', '东京塔', '富士山', '清水寺', '大阪城', '奈良公园', '心斋桥'],
+    foods: ['寿司', '豚骨拉面', '天妇罗', '和牛烧肉', '抹茶甜品'],
+    perNight: { economy: 350, comfort: 700, luxury: 1500 },
+    transferNotes: ['东京→大阪新干线约2.5h', '市内地铁+私铁，建议买交通卡'],
+    entryNotes: [
+      '护照有效期需 6 个月以上',
+      '单次旅游签证，建议出行前 2-3 周办理',
+      '入境前填写 Visit Japan Web，落地走自助通道',
+    ],
+  },
+  {
+    key: '泰国',
+    region: 'overseas',
+    country: '泰国',
+    currency: 'THB',
+    aliases: ['泰国', '曼谷', '清迈', '普吉', '芭提雅', '苏梅', 'thailand', 'bangkok', 'phuket', 'chiangmai'],
+    cities: ['曼谷', '清迈', '普吉'],
+    attractions: ['大皇宫', '卧佛寺', '丹嫩沙多水上市场', '清迈古城', '皮皮岛', '双龙寺'],
+    foods: ['冬阴功汤', '青咖喱', '芒果糯米饭', '泰式炒河粉', '船面'],
+    perNight: { economy: 150, comfort: 350, luxury: 900 },
+    transferNotes: ['曼谷→清迈飞约1.2h或夜火车', '市内建议 BTS/GRAB，避免高峰打车'],
+    entryNotes: [
+      '中泰互免签证，单次停留不超过 30 天',
+      '护照有效期需 6 个月以上',
+      '建议购买含医疗的旅行保险',
+    ],
+  },
+  {
+    key: '韩国',
+    region: 'overseas',
+    country: '韩国',
+    currency: 'KRW',
+    aliases: ['韩国', '首尔', '济州', '济州岛', '釜山', 'korea', 'seoul', 'jeju'],
+    cities: ['首尔', '济州', '釜山'],
+    attractions: ['景福宫', '明洞', '北村韩屋村', '南山塔', '济州城山日出峰'],
+    foods: ['部队锅', '韩式烤肉', '参鸡汤', '炸鸡配啤酒', '辣炒年糕'],
+    perNight: { economy: 280, comfort: 550, luxury: 1100 },
+    transferNotes: ['首尔→济州飞约1h', '首尔地铁发达，建议 T-money 卡'],
+    entryNotes: ['需办理旅游签证（济州岛免签）', '护照有效期需 6 个月以上', '免税店购物需出示护照与回程机票'],
+  },
+  {
+    key: '新加坡',
+    region: 'overseas',
+    country: '新加坡',
+    currency: 'SGD',
+    aliases: ['新加坡', '狮城', 'singapore'],
+    cities: ['新加坡'],
+    attractions: ['滨海湾花园', '鱼尾狮公园', '圣淘沙', '环球影城', '牛车水'],
+    foods: ['辣椒螃蟹', '海南鸡饭', '肉骨茶', '叻沙', '咖椰吐司'],
+    perNight: { economy: 400, comfort: 800, luxury: 1800 },
+    transferNotes: ['地铁覆盖全岛，EZ-Link 卡通用', '圣淘沙可坐捷运/缆车'],
+    entryNotes: ['中新互免签证，停留不超过 30 天', '护照有效期需 6 个月以上', '入境需提前填写 SG Arrival Card'],
+  },
+  {
+    key: '越南',
+    region: 'overseas',
+    country: '越南',
+    currency: 'VND',
+    aliases: ['越南', '岘港', '芽庄', '河内', '胡志明', 'vietnam', 'danang', 'hanoi'],
+    cities: ['岘港', '芽庄', '河内'],
+    attractions: ['美溪海滩', '会安古镇', '巴拿山', '芽庄四岛', '还剑湖'],
+    foods: ['越南河粉', '滴漏咖啡', '越式法包', '春卷', '海鲜大排档'],
+    perNight: { economy: 120, comfort: 300, luxury: 700 },
+    transferNotes: ['岘港→会安车程约40min', '市内建议 GRAB 打车'],
+    entryNotes: ['可办电子签（E-visa），约 3 个工作日出签', '护照有效期需 6 个月以上', '当地以现金为主，建议备小额越南盾'],
+  },
+  {
+    key: '马来西亚',
+    region: 'overseas',
+    country: '马来西亚',
+    currency: 'MYR',
+    aliases: ['马来西亚', '吉隆坡', '沙巴', '亚庇', '槟城', 'malaysia', 'kualalumpur', 'sabah'],
+    cities: ['吉隆坡', '亚庇'],
+    attractions: ['双子塔', '独立广场', '黑风洞', '美人鱼岛', '神山公园'],
+    foods: ['椰浆饭', '肉骨茶', '沙爹串', '拉茶', '叻沙'],
+    perNight: { economy: 150, comfort: 350, luxury: 800 },
+    transferNotes: ['吉隆坡→亚庇飞约2.5h', '市内建议 GRAB'],
+    entryNotes: ['中马互免签证，停留不超过 30 天', '护照有效期需 6 个月以上', '入境需填写数字入境卡（MDAC）'],
+  },
 ];
 
 /** 逗号分隔文本 → 清单（清洗空项） */
@@ -150,6 +248,48 @@ export function extractDestinationFromText(text: string): DestinationKnowledge |
     if (k.aliases.some((a) => t.includes(a.toLowerCase()))) return k;
   }
   return undefined;
+}
+
+/**
+ * 未收录目的地的通用主数据。
+ *
+ * ⚠️ 这里修的是一个**观感级 bug**：三处兜底原先都写 `?? DESTINATIONS[0]`，
+ * 于是「去日本」「去冰岛」会拿到云南的石林、过桥米线 —— 用户一眼就看出是假的。
+ * 宁可给「城市地标/当地特色餐」这种诚实的通用项，也不要冒充别的目的地。
+ */
+export function genericKnowledge(destination: string | undefined): DestinationKnowledge {
+  const key = (destination ?? '').trim() || '目的地';
+  return {
+    key,
+    aliases: [],
+    cities: [key],
+    attractions: ['城市地标', '当地博物馆', '老城街区漫步'],
+    foods: ['当地特色餐'],
+    perNight: { economy: 200, comfort: 450, luxury: 900 },
+    transferNotes: ['未收录该目的地主数据，以下为通用估算'],
+  };
+}
+
+/** 取主数据；未收录则给通用条目（绝不冒充其他目的地） */
+export function resolveKnowledge(destination: string | undefined): DestinationKnowledge {
+  return findKnowledge(destination) ?? genericKnowledge(destination);
+}
+
+/** 是否境外目的地 */
+export function isOverseas(destination: string | undefined): boolean {
+  return findKnowledge(destination)?.region === 'overseas';
+}
+
+/** 出境入境手续提示（境内目的地返回空数组） */
+export function entryNotesOf(destination: string | undefined): string[] {
+  const k = findKnowledge(destination);
+  return k?.region === 'overseas' ? (k.entryNotes ?? []) : [];
+}
+
+/** 目的地所属国家（境内或未收录返回空串） */
+export function countryOf(destination: string | undefined): string {
+  const k = findKnowledge(destination);
+  return k?.region === 'overseas' ? (k.country ?? '') : '';
 }
 
 /** 同行有效住客数（不把婴儿按全价住宿摊） */
@@ -219,6 +359,27 @@ export const CITY_COORDS: Record<string, [number, number]> = {
   呼和浩特: [40.84, 111.75],
   乌鲁木齐: [43.83, 87.62],
   拉萨: [29.65, 91.14],
+
+  /* 境外常用目的地（出境游按国际航线估算） */
+  东京: [35.68, 139.69],
+  大阪: [34.69, 135.5],
+  京都: [35.01, 135.77],
+  首尔: [37.57, 126.98],
+  济州: [33.5, 126.53],
+  釜山: [35.18, 129.08],
+  曼谷: [13.76, 100.5],
+  清迈: [18.79, 98.98],
+  普吉: [7.88, 98.39],
+  新加坡: [1.35, 103.82],
+  吉隆坡: [3.14, 101.69],
+  亚庇: [5.98, 116.07],
+  河内: [21.03, 105.85],
+  岘港: [16.05, 108.22],
+  芽庄: [12.24, 109.19],
+  巴黎: [48.86, 2.35],
+  伦敦: [51.51, -0.13],
+  罗马: [41.9, 12.5],
+  纽约: [40.71, -74.01],
 };
 
 /** 大交通方式的中文渲染 */
@@ -265,16 +426,30 @@ const round5 = (n: number) => Math.round(n / 5) * 5;
 /**
  * 按距离选大交通方式并给出票价/耗时。
  *
- * 经验口径（2026 年国内均价，取整到 5 元）：
+ * 境内经验口径（2026 年国内均价，取整到 5 元）：
  *  - ≤120km   ：长途汽车，约 0.3 元/公里；
  *  - ≤1200km  ：高铁二等座，约 0.42 元/公里（地面里程按直线的 1.2 倍折算）；
  *  - >1200km  ：飞机经济舱，约 0.42 元/公里 + 100 元机建燃油。
+ *
+ * 境外：一律按**国际直飞**估算 —— 里程单价 0.45 元/公里 + 480 元税费/机建，
+ * 并额外计入 2 小时机场流程与 1 小时入境边检（这部分经常被漏算）。
  */
-function planIntercity(km: number): {
+function planIntercity(
+  km: number,
+  overseas = false,
+): {
   mode: IntercityMode;
   minutes: number;
   unitCost: number;
 } {
+  if (overseas) {
+    const air = km * 1.05;
+    return {
+      mode: 'flight',
+      minutes: 120 + Math.round((air / 800) * 60) + 60,
+      unitCost: Math.max(900, round5(air * 0.45 + 480)),
+    };
+  }
   if (km <= 120) {
     const ground = km * 1.2;
     return {
@@ -310,14 +485,18 @@ function planIntercity(km: number): {
 export function estimateIntercity(profile: TripProfile): IntercityLeg[] {
   const originCity = resolveCity(profile.origin);
   const k = findKnowledge(profile.destination);
+  const overseas = k?.region === 'overseas';
   const destCity =
     resolveCity(k?.cities?.[0]) ?? resolveCity(profile.destination) ?? undefined;
   if (!originCity || !destCity || originCity === destCity) return [];
 
   const km = haversineKm(CITY_COORDS[originCity]!, CITY_COORDS[destCity]!);
-  const plan = planIntercity(km);
+  const plan = planIntercity(km, overseas);
   const units = ticketUnits(profile.companions);
-  const note = `${km} 公里 · ${INTERCITY_MODE_LABEL[plan.mode]}约 ${Math.round(plan.minutes / 60)} 小时`;
+  const hours = Math.round(plan.minutes / 60);
+  const note = overseas
+    ? `${km} 公里 · 国际直飞约 ${hours} 小时（含入境通关）`
+    : `${km} 公里 · ${INTERCITY_MODE_LABEL[plan.mode]}约 ${hours} 小时`;
 
   const leg = (direction: IntercityLeg['direction']): IntercityLeg => ({
     direction,
@@ -351,7 +530,7 @@ function sliceAttractions(list: string[], days: number): string[] {
 
 /** 兜底路线：目的地主数据 → 逐日景点间路线，交通/耗时按常识给定 */
 export function buildFallbackRoute(profile: TripProfile): RoutePlan {
-  const k = findKnowledge(profile.destination) ?? DESTINATIONS[0]!;
+  const k = resolveKnowledge(profile.destination);
   const days = Math.max(profile.days, 1);
   const spots = sliceAttractions(k.attractions, days);
   const isYunnan = k.key === '云南';
@@ -380,6 +559,8 @@ export function buildFallbackRoute(profile: TripProfile): RoutePlan {
     transportPreference: transportPreference(profile),
     // 往返大交通：出发地缺失时为空数组，不影响城内路线
     intercity: estimateIntercity(profile),
+    // 出境手续提示：兜底路径同样要给，否则无 Key 时「出境游」会少掉最关键的一段
+    entryNotes: entryNotesOf(profile.destination),
   };
 }
 
@@ -389,7 +570,7 @@ export function buildFallbackRoute(profile: TripProfile): RoutePlan {
 
 /** 兜底行程：节奏控制每天活动数，嵌餐饮与住宿 */
 export function buildFallbackItinerary(profile: TripProfile): ItineraryPlan {
-  const k = findKnowledge(profile.destination) ?? DESTINATIONS[0]!;
+  const k = resolveKnowledge(profile.destination);
   const days = Math.max(profile.days, 1);
   const pace = profile.preferences.pace;
   const chosen = k.attractions;
@@ -461,7 +642,7 @@ export function estimateItineraryCost(profile: TripProfile): number {
 
 /** 兜底预算：由画像预算或经验估算得到总额，再按类别占比分摊并给可执行建议 */
 export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
-  const k = findKnowledge(profile.destination) ?? DESTINATIONS[0]!;
+  const k = resolveKnowledge(profile.destination);
   const days = Math.max(profile.days, 1);
   const nights = Math.max(days - 1, 1);
   const rooms = roomsPerNight(profile.companions);
@@ -523,6 +704,11 @@ export function buildFallbackBudget(profile: TripProfile): BudgetPlan {
   }));
 
   const suggestions: string[] = [];
+  if (isOverseas(profile.destination)) {
+    suggestions.push(
+      `境外开销已按人民币折算估算（当地货币 ${k.currency ?? '—'}），实际以汇率为准`,
+    );
+  }
   if (overBudget) {
     const comfortRate =
       profile.preferences.accommodationLevel === 'luxury' ? k.perNight.comfort : rate;

@@ -449,3 +449,43 @@
   background: rgba(255, 255, 255, 0.22);
 }
 
+
+/* 收敛门 · 局部重派（第五部分） */
+.tp-gate-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.tp-gate-head b {
+  font-size: 14px;
+  opacity: 1;
+}
+
+.tp-gate-trace,
+.tp-board {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.tp-gate-trace-head {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.tp-gate-trace .tp-list li,
+.tp-board .tp-list li {
+  font-size: 13px;
+}
+
+.tp-board .tp-grid {
+  margin-bottom: 4px;
+}

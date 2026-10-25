@@ -157,3 +157,21 @@ export function getLlmProviders(): LlmProviderEndpoint[] {
 export function hasLlmProvider(): boolean {
   return getLlmProviders().length > 0;
 }
+
+/**
+ * 收敛门允许的局部重派轮数上限（首轮之外）。`0` = 关闭。
+ *
+ * 默认 1：讲义第五部分把它当「降级开关」——关掉就是课10 basic 的行为。
+ * 读不到/非法值一律回落到 1，避免页面上出现「配错就悄悄不重派」。
+ */
+export function travelMaxRounds(): number {
+  const raw = readEnv('VITE_TRAVEL_MAX_ROUNDS');
+  const n = Number(raw);
+  if (!raw || !Number.isFinite(n) || n < 0) return 1;
+  return Math.trunc(n);
+}
+
+/** 是否给 route 挂地图工具（默认开）。`VITE_TRAVEL_MAP_TOOL=off` 时退回无工具的 RouteWorker */
+export function travelToolAware(): boolean {
+  return (readEnv('VITE_TRAVEL_MAP_TOOL') ?? 'mock').toLowerCase() !== 'off';
+}

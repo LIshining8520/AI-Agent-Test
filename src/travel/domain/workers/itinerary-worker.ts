@@ -13,6 +13,7 @@ import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { Activity, ItineraryPlan, TripProfile } from '../../shared/travel-types';
 import { attractionImagePath } from '../../shared/attraction-image';
 import { buildFallbackItinerary, findKnowledge } from '../travel-knowledge';
+import type { VerificationResult } from '../orchestration/worker-protocol';
 import { BaseWorker, clampDay, type WorkerContext } from './worker';
 
 interface RawSlotInput {
@@ -139,6 +140,49 @@ export class ItineraryWorker extends BaseWorker<ItineraryPlan> {
       if (a && typeof a.name === 'string' && a.name.trim()) return this.coerceActivity(a);
     }
     return undefined;
+  }
+
+  /**
+   * 行程自检：天数对齐 + 逐日有内容。
+   *
+   * 这两条是「方案能不能用」的地板，而不是「好不好」的评价：
+   * 天数少一天意味着有一晚没地方住，某天 activities 为空意味着游客当天无事可做——
+   * 都属于结构缺失，靠调优 prompt 的措辞解决不了，必须让模型重排。
+   *
+   * 纯函数：只读产物与画像，不调 LLM、不读 env，因此同输入必同结论（评测可复现）。
+   * facts.nights 取 days-1（当日往返也至少留 1 晚，避免下游把「0 晚」当成没算）。
+   */
+  verify(data: unknown, ctx: WorkerContext): VerificationResult {
+    const plan = data as ItineraryPlan;
+    const expectedDays = Math.max(ctx.profile.days, 1);
+    const facts = { nights: Math.max(ctx.profile.days - 1, 1) };
+    const planByDay = plan.planByDay ?? [];
+
+    if (planByDay.length !== expectedDays) {
+      return {
+        ok: false,
+        feedback:
+          `行程覆盖 ${planByDay.length} 天，画像要求 ${expectedDays} 天；` +
+          `请${planByDay.length < expectedDays ? '补足缺少的天数' : '合并重复的天数'}，` +
+          `使 planByDay 恰好 ${expectedDays} 项且 day 连续。`,
+        facts,
+      };
+    }
+
+    const emptyDays = planByDay
+      .filter((d) => (d.activities ?? []).length === 0)
+      .map((d) => d.day);
+    if (emptyDays.length > 0) {
+      return {
+        ok: false,
+        feedback:
+          `第 ${emptyDays.join('、')} 天没有任何活动，请为每天都安排至少一项可执行内容` +
+          '（景点/餐饮/住宿或交通），并保留早/午/晚时段描述。',
+        facts,
+      };
+    }
+
+    return { ok: true, facts };
   }
 
   fallback(profile: TripProfile): ItineraryPlan {

@@ -7,7 +7,14 @@
 import type { GenerateRequest, LlmClient } from '../../shared/llm';
 import type { RoutePlan, TripProfile } from '../../shared/travel-types';
 import { buildFallbackRoute, entryNotesOf, estimateIntercity, findKnowledge } from '../travel-knowledge';
+import type { VerificationResult } from '../orchestration/worker-protocol';
 import { BaseWorker, clampDay, type WorkerContext } from './worker';
+
+/**
+ * 单段通勤时长上限（分钟）。导出给工具感知 worker 复用同一口径——
+ * 「路线是否合理」若有两条标准，用户会看到同一份计划在两个入口得到不同结论。
+ */
+export const SINGLE_SEGMENT_LIMIT_MIN = 90;
 
 interface RawRouteInput {
   destination?: string;
@@ -88,6 +95,43 @@ export class RouteWorker extends BaseWorker<RoutePlan> {
       // 出境游的签证/入境提示：这不是路线本身，但漏了会让人到了机场才发现问题
       entryNotes: entryNotesOf(profile.destination),
     };
+  }
+
+  /**
+   * 路线自检：单段通勤时长上限（第五部分 5.1「四维判定」里 distance 维度的角色侧版本）。
+   *
+   * 为什么拿 90min 当硬线：跨城/跨景区单段超过一个半小时，对「带孩子、节奏慢」的画像
+   * 已经不是「坐得久一点」而是当天行程作废——到地方就该吃饭/回酒店了。
+   * 这个阈值只看**路线自身**（不查地图、不看天气），因此是纯函数：
+   * 同一份 RoutePlan 在任何环境、任何时刻都得到同一个结论。
+   *
+   * `dayAnchors` 一次性给出整天覆盖（day → 当天终点），不做逐天合并：
+   * 路线重排后旧锚点已经过期，合并只会留下「第 3 天还在大理」这类幽灵事实。
+   *
+   * 声明为 async 只是 Promise 包装（实现里没有 await）：课11 的 ToolAwareRouteWorker
+   * 覆盖时要真切地 await 地图工具，父类先留出异步签名，否则子类无法把
+   * 「静态判断 + 工具复核」合成同一个结论。
+   */
+  async verify(data: unknown, _ctx: WorkerContext): Promise<VerificationResult> {
+    const plan = data as RoutePlan;
+    const dayAnchors: Record<number, string> = {};
+    // 按天升序写锚点；同一天多段时以**最后一段的终点**为当天落脚点（稳定排序保留段内顺序）
+    for (const r of [...(plan.routes ?? [])].sort((a, b) => a.day - b.day)) {
+      if (r.to) dayAnchors[r.day] = r.to;
+    }
+
+    const tooLong = (plan.routes ?? []).find((r) => r.estDurationMin > SINGLE_SEGMENT_LIMIT_MIN);
+    if (tooLong) {
+      return {
+        ok: false,
+        feedback:
+          `第 ${tooLong.day} 天 ${tooLong.origin ?? '出发地'}→${tooLong.to} ${tooLong.estDurationMin}min ` +
+          `超过单段 ${SINGLE_SEGMENT_LIMIT_MIN}min 上限，请压缩该段或改乘公共交通（如高铁/城际大巴），` +
+          '必要时把它拆成两段并在中间安排休息点。',
+        facts: { dayAnchors },
+      };
+    }
+    return { ok: true, facts: { dayAnchors } };
   }
 
   fallback(profile: TripProfile): RoutePlan {

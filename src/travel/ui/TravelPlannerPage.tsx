@@ -6,11 +6,20 @@
  * 包括**降级**（哪条链走了规则兜底）与**成本**（token / 美元），不粉饰。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { travelGraph, clarifyPrompt, type TravelState, type CheckItem } from '../graph/travel-graph';
+import {
+  travelGraph,
+  clarifyPrompt,
+  type TravelState,
+  type CheckItem,
+  type GateEvent,
+} from '../graph/travel-graph';
 import { getTravelRuntime } from '../application/travel-runtime';
 import { profileCompleteness, COMPANION_LABELS } from '../shared/trip-profile';
 import type { BudgetPlan, ItineraryPlan, RoutePlan } from '../shared/travel-types';
 import { INTERCITY_MODE_LABEL } from '../domain/travel-knowledge';
+import type { ConflictEvent, PlanBoardFacts } from '../domain/collab/plan-board';
+import type { FeasibilityReport } from '../domain/safety/itinerary-quality';
+import type { MapRouteInfo } from '../domain/tools/map-tool';
 import { EMOJI } from '../../emotion/agentEmotion';
 import './travel.css';
 
@@ -23,6 +32,7 @@ const NODE_LABEL: Record<string, string> = {
   itineraryWorker: '行程子链',
   budgetWorker: '费用子链',
   arbitrate: '收口质检',
+  convergeGate: '收敛重派',
 };
 
 /** 节点 → 球球情绪（沿用项目既有的表情体系） */
@@ -33,6 +43,7 @@ const NODE_EMOJI: Record<string, string> = {
   itineraryWorker: EMOJI.BUSY,
   budgetWorker: EMOJI.BUSY,
   arbitrate: EMOJI.PLEASED,
+  convergeGate: EMOJI.THINKING,
 };
 
 const EXAMPLES = [
@@ -71,6 +82,19 @@ interface Snapshot {
   summary?: string;
   sources?: Record<string, 'llm' | 'fallback'>;
   errors?: Array<{ kind: string; message: string }>;
+  /* —— 课11/12 增量读数 —— */
+  /** 收敛门：是否自洽 / 派发轮数 / 最后待改角色数 */
+  converged?: boolean;
+  rounds?: number;
+  revisions?: number;
+  gateTrace?: GateEvent[];
+  gateReport?: FeasibilityReport;
+  suggestions?: string[];
+  /** 黑板事实快照与冲突留痕 */
+  boardFacts?: PlanBoardFacts;
+  boardConflicts?: ConflictEvent[];
+  /** 地图工具读数（来自 ToolAwareRouteWorker 的实例埋点） */
+  map?: { calls: number; successes: number; failures: number; last?: string };
 }
 
 interface Props {
@@ -135,6 +159,34 @@ function TravelPlannerPage({ onStage }: Props) {
         if (Array.isArray(upd.errors) && upd.errors.length > 0) {
           next.errors = [...(next.errors ?? []), ...upd.errors];
         }
+        /* —— 课11/12 增量读数：收敛门 / 黑板 / 点名重派 —— */
+        if (typeof upd.converged === 'boolean') next.converged = upd.converged;
+        if (typeof upd.rounds === 'number') next.rounds = upd.rounds;
+        if (typeof upd.revisions === 'number') next.revisions = upd.revisions;
+        if (Array.isArray(upd.gateTrace)) next.gateTrace = upd.gateTrace;
+        if (upd.gateReport) next.gateReport = upd.gateReport;
+        if (Array.isArray(upd.suggestions)) next.suggestions = upd.suggestions;
+        if (upd.boardFacts) next.boardFacts = upd.boardFacts;
+        if (Array.isArray(upd.boardConflicts)) next.boardConflicts = upd.boardConflicts;
+        setSnap({ ...next });
+      }
+
+      // 地图工具读数：埋点在 ToolAwareRouteWorker 实例上，跑完读一次即可
+      if (runtime.toolAware) {
+        const rw = runtime.workers.route as unknown as {
+          mapCalls?: number;
+          mapSuccesses?: number;
+          mapFailures?: number;
+          lastMapResult?: MapRouteInfo;
+        };
+        next.map = {
+          calls: rw.mapCalls ?? 0,
+          successes: rw.mapSuccesses ?? 0,
+          failures: rw.mapFailures ?? 0,
+          last: rw.lastMapResult
+            ? `${rw.lastMapResult.origin} → ${rw.lastMapResult.destination} · ${rw.lastMapResult.distanceKm}km / ${rw.lastMapResult.durationMin}min`
+            : undefined,
+        };
         setSnap({ ...next });
       }
 
@@ -193,7 +245,7 @@ function TravelPlannerPage({ onStage }: Props) {
         </div>
         <div className="actions">
           <span className="tenant-label">
-            图：parse → dispatch → 三链并行 → arbitrate（LangGraph）
+            图：parse → dispatch → 三链并行 → arbitrate → convergeGate（LangGraph）
           </span>
           <button type="button" onClick={run} disabled={running || !input.trim()}>
             {running ? '编排中…' : '开始规划'}
@@ -427,6 +479,110 @@ function TravelPlannerPage({ onStage }: Props) {
                 ))}
               </ul>
             </div>
+          )}
+        </section>
+      )}
+
+      {/* 收敛门（第五部分）+ 黑板（第四部分）+ 工具读数（第三部分） */}
+      {(snap.rounds !== undefined || snap.gateReport || snap.boardFacts) && (
+        <section className="panel">
+          <div className="tp-row">
+            <h2>⑥ 收敛门 · 局部重派</h2>
+            <span className={`tp-chip ${snap.converged ? '' : 'warn'}`}>
+              {snap.converged ? '已收敛' : '未收敛'}
+            </span>
+          </div>
+
+          <div className="tp-gate-head">
+            <span>
+              派发轮数 <b>{snap.rounds ?? 1}</b>
+              {runtime.maxRounds === 0 ? '（收敛门已关闭）' : ` / 上限 ${runtime.maxRounds + 1}`}
+            </span>
+            <span>最后待改角色 {snap.revisions ?? 0}</span>
+            {runtime.toolAware && snap.map && (
+              <span>
+                地图工具 {snap.map.successes}/{snap.map.calls} 成功
+                {snap.map.failures > 0 ? ` · 失败 ${snap.map.failures}` : ''}
+              </span>
+            )}
+          </div>
+          {snap.map?.last && <p className="tp-note">地图复核：{snap.map.last}</p>}
+
+          {snap.gateReport && (
+            <ul className="tp-checks">
+              {(
+                [
+                  ['时序', snap.gateReport.temporal],
+                  ['距离', snap.gateReport.distance],
+                  ['预算', snap.gateReport.budget],
+                  ['可达性', snap.gateReport.reachability],
+                ] as const
+              ).map(([label, dim]) => (
+                <li key={label} className={dim.pass ? 'ok' : 'bad'}>
+                  <span className="tp-check-mark">{dim.pass ? '✓' : '✗'}</span>
+                  <b>{label}</b>
+                  <span className="tp-sub">{dim.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {snap.gateTrace && snap.gateTrace.length > 0 && (
+            <div className="tp-gate-trace">
+              <div className="tp-gate-trace-head">点名重派记录</div>
+              <ul className="tp-list">
+                {snap.gateTrace.map((g, i) => (
+                  <li key={`${g.round}-${g.kind}-${i}`}>
+                    <b>第 {g.round} 轮</b> {g.kind}
+                    <span className="tp-sub">
+                      {g.ok ? '重派完成' : '重派失败'} · {g.reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {snap.boardFacts && (
+            <div className="tp-board">
+              <div className="tp-gate-trace-head">
+                共享黑板 · 已确认事实
+                {(snap.boardConflicts?.length ?? 0) > 0 && (
+                  <em className="tp-degraded"> · 冲突 {snap.boardConflicts!.length} 次</em>
+                )}
+              </div>
+              <div className="tp-grid">
+                <Field
+                  label="住宿晚数"
+                  value={snap.boardFacts.nights > 0 ? `${snap.boardFacts.nights} 晚` : '—'}
+                />
+                <Field
+                  label="预算上限"
+                  value={snap.boardFacts.budgetCap > 0 ? `¥${snap.boardFacts.budgetCap}` : '—'}
+                />
+                <Field
+                  label="必去景点"
+                  value={snap.boardFacts.mustVisit.join('、') || '—'}
+                />
+              </div>
+              {Object.keys(snap.boardFacts.dayAnchors).length > 0 && (
+                <p className="tp-note">
+                  逐日落脚：
+                  {Object.entries(snap.boardFacts.dayAnchors)
+                    .sort((a, b) => Number(a[0]) - Number(b[0]))
+                    .map(([d, city]) => `D${d} ${city}`)
+                    .join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {snap.suggestions && snap.suggestions.length > 0 && (
+            <ul className="tp-list">
+              {snap.suggestions.map((s, i) => (
+                <li key={`${s}-${i}`}>{s}</li>
+              ))}
+            </ul>
           )}
         </section>
       )}

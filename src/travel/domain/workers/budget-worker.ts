@@ -18,6 +18,7 @@ import {
   intercityTotal,
 } from '../travel-knowledge';
 import { BaseWorker, type WorkerContext } from './worker';
+import type { VerificationResult } from '../orchestration/worker-protocol';
 
 const CATEGORIES: Array<BudgetPlan['allocated'][number]['category']> = [
   'intercity',
@@ -154,6 +155,45 @@ export class BudgetWorker extends BaseWorker<BudgetPlan> {
       suggestions,
       intercityCost: intercityAmount,
     };
+  }
+
+  /**
+   * 预算自检：分摊不超总预算 + 备用金非负。
+   *
+   * 两条都是「账要算得平」的硬约束：合计超上限意味着方案不可能按这个预算执行，
+   * 备用金为负则是把亏损当成了余量。校验只看产物自身（纯函数），
+   * 所以即使 LLM 换了措辞、换了写法，结论仍然一致。
+   *
+   * facts.budgetCap 取产物里的 totalBudget：它是这一版分摊真正依据的上限，
+   * 与 profile.budget 不一致时，下游需要知道「这一版是按哪个数算的」。
+   */
+  verify(data: unknown, _ctx: WorkerContext): VerificationResult {
+    const plan = data as BudgetPlan;
+    const allocated = plan.allocated ?? [];
+    const total = plan.totalBudget;
+    const facts = { budgetCap: total };
+
+    const sum = allocated.reduce((s, a) => s + a.amount, 0);
+    if (sum > total) {
+      return {
+        ok: false,
+        feedback:
+          `分摊合计 ${sum} 元超过总预算 ${total} 元，请压缩弹性项（住宿档位、购物、交通方式）` +
+          `至少 ${sum - total} 元，并保证各类 amount 之和不超过 ${total} 元。`,
+        facts,
+      };
+    }
+
+    const reserve = allocated.find((a) => a.category === 'reserve');
+    if (reserve && reserve.amount < 0) {
+      return {
+        ok: false,
+        feedback: `备用金为负（${reserve.amount} 元），请把备用金改为不少于 0，并把差额挪回住宿/餐饮等主项。`,
+        facts,
+      };
+    }
+
+    return { ok: true, facts };
   }
 
   fallback(profile: TripProfile): BudgetPlan {
